@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+import pytz
 from datetime import datetime, timedelta, time
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -153,10 +154,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🔔 *Ti ho aggiunto alla lista delle notifiche delle 20:00!*", parse_mode="Markdown")
         logger.info(f"Aggiunto nuovo sottoscrittore da messaggio: {chat_id}")
 
-# --- Notifiche automatiche alle 20:00 ---
+# --- Notifiche automatiche ---
 async def send_daily_notification(context: ContextTypes.DEFAULT_TYPE):
     global subscribers
-    logger.info("=== INIZIO INVIO NOTIFICHE GIORNALIERE (20:00) ===")
+    logger.info("=== INIZIO INVIO NOTIFICHE GIORNALIERE ===")
     next_day = (datetime.now() + timedelta(days=1)).strftime('%d-%m-%y')
 
     if not subscribers:
@@ -177,13 +178,15 @@ async def send_daily_notification(context: ContextTypes.DEFAULT_TYPE):
 
     logger.info("=== FINE INVIO NOTIFICHE GIORNALIERE ===")
 
-# --- Avvio del bot ---
 def main():
     global subscribers
     subscribers = load_subscribers()
-    logger.info(f"Caricati {len(subscribers)} sottoscrittori per le notifiche.")
-
+    
+    # Manteniamo comunque la variabile d'ambiente
+    os.environ['TZ'] = 'Europe/Rome'
+    
     logger.info("Avvio del bot...")
+    
     application = Application.builder().token(config['token']).build()
     application.add_handler(CommandHandler('trash', send_trash_exposure))
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
@@ -193,13 +196,17 @@ def main():
     if notifications_config.get('enabled', False):
         try:
             hour, minute = map(int, notifications_config['time'].split(':'))
+            
+            rome_tz = pytz.timezone('Europe/Rome')
+            
             application.job_queue.run_daily(
                 callback=send_daily_notification,
-                time=time(hour=hour, minute=minute),
+                # Passiamo il fuso orario direttamente qui
+                time=time(hour=hour, minute=minute, tzinfo=rome_tz),
                 days=(0, 1, 2, 3, 4, 5, 6),
                 name='daily_trash_notification'
             )
-            logger.info(f"⏰ Notifiche programmate per le {notifications_config['time']} ogni giorno.")
+            logger.info(f"⏰ Notifiche programmate per le {notifications_config['time']} ogni giorno (Fuso locale).")
         except Exception as e:
             logger.error(f"Errore nella programmazione delle notifiche: {e}")
     else:
@@ -207,7 +214,6 @@ def main():
 
     logger.info("Bot configurato e pronto.")
     application.run_polling()
-    logger.info("Bot avviato in polling.")
 
 if __name__ == '__main__':
     main()
