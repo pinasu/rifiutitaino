@@ -63,14 +63,18 @@ def setup_logging():
         def __init__(self, filename_template, max_days=7, **kwargs):
             self.filename_template = filename_template
             self.max_days = max_days
-            self.current_date = datetime.now().strftime('%Y-%m-%d')
-            self.current_filename = self.filename_template.format(date=self.current_date)
-            super().__init__(self.current_filename, **kwargs)
+            super().__init__(self._get_current_filename(), **kwargs)
             self._cleanup_old_logs()
+
+        def _get_current_filename(self):
+            """Genera il nome del file basato sulla data corrente."""
+            return self.filename_template.format(date=datetime.now().strftime('%Y-%m-%d'))
 
         def _cleanup_old_logs(self):
             now = datetime.now()
-            log_dir = os.path.dirname(self.current_filename) or '.'
+            log_dir = os.path.dirname(self.filename_template.split('/')[0]) or '.'
+            if not os.path.exists(log_dir): return
+            
             for fname in os.listdir(log_dir):
                 if fname.startswith('bot_') and fname.endswith('.log'):
                     try:
@@ -78,19 +82,17 @@ def setup_logging():
                         file_date = datetime.strptime(date_str, '%Y-%m-%d')
                         if (now - file_date) > timedelta(days=self.max_days):
                             os.remove(os.path.join(log_dir, fname))
-                            logger.info(f"Cancellato log vecchio: {fname}")
                     except (ValueError, OSError):
                         pass
 
         def emit(self, record):
-            new_date = datetime.now().strftime('%Y-%m-%d')
-            if self.current_date != new_date:
-                self.current_date = new_date
-                self.current_filename = self.filename_template.format(date=new_date)
+            """Verifica la data prima di ogni emissione e ruota il file se necessario."""
+            target_filename = self._get_current_filename()
+            if self.baseFilename != os.path.abspath(target_filename):
                 if self.stream:
                     self.stream.close()
-                self.baseFilename = self.current_filename
-                self.stream = self._open()
+                    self.stream = None
+                self.baseFilename = target_filename
             super().emit(record)
 
     log_handler = DailyLogHandler(
@@ -104,7 +106,6 @@ def setup_logging():
 
 logger = setup_logging()
 
-# --- Caricamento configurazione e dati ---
 try:
     with open('config.json', 'r') as f:
         config = json.load(f)
@@ -117,11 +118,11 @@ try:
 except FileNotFoundError as e:
     logger.error(f"File non trovato: {e.filename}")
     raise
+
 except json.JSONDecodeError:
     logger.error("Errore nel parsing del file JSON.")
     raise
 
-# --- Funzioni del bot ---
 def get_trash_exposure_date():
     next_day = (datetime.now() + timedelta(days=1)).strftime('%d-%m-%y')
     logger.info(f"Controllo esposizione rifiuti per domani: {next_day}")
@@ -143,7 +144,6 @@ async def send_trash_exposure(update: Update, context: ContextTypes.DEFAULT_TYPE
     trash_info = get_trash_exposure_date()
 
     formatted_message = format_trash_message(trash_info)
-    # Forza l'invio in modalità Markdown per abilitare le icone e la formattazione grafica
     await context.bot.send_message(chat_id=chat_id, text=formatted_message, parse_mode="Markdown")
     logger.info(f"Messaggio inviato a {chat_id}: {formatted_message}")
 
@@ -154,7 +154,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🔔 *Ti ho aggiunto alla lista delle notifiche delle 20:00!*", parse_mode="Markdown")
         logger.info(f"Aggiunto nuovo sottoscrittore da messaggio: {chat_id}")
 
-# --- Notifiche automatiche ---
 async def send_daily_notification(context: ContextTypes.DEFAULT_TYPE):
     global subscribers
     logger.info("=== INIZIO INVIO NOTIFICHE GIORNALIERE ===")
@@ -182,7 +181,6 @@ def main():
     global subscribers
     subscribers = load_subscribers()
     
-    # Manteniamo comunque la variabile d'ambiente
     os.environ['TZ'] = 'Europe/Rome'
     
     logger.info("Avvio del bot...")
@@ -191,7 +189,6 @@ def main():
     application.add_handler(CommandHandler('trash', send_trash_exposure))
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
 
-    # Programma notifiche automatiche
     notifications_config = config.get('notifications', {})
     if notifications_config.get('enabled', False):
         try:
