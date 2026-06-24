@@ -164,6 +164,12 @@ async def send_daily_notification(context: ContextTypes.DEFAULT_TYPE):
         return
 
     trash_info = calendar_data.get(next_day, [])
+
+    if not trash_info:
+        logger.info(f"Nessun rifiuto da esporre per il {next_day}: notifica giornaliera saltata.")
+        logger.info("=== FINE INVIO NOTIFICHE GIORNALIERE ===")
+        return
+
     formatted_message = format_trash_message(trash_info)
     logger.info(f"Messaggio da inviare: {formatted_message}")
 
