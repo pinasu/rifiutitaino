@@ -235,7 +235,7 @@ def main():
     
     application = Application.builder().token(config['token']).build()
     application.add_handler(CommandHandler('trash', send_trash_exposure))
-    application.add_handler(CommandHandler("ecocentro", ecocentro))
+    application.add_handler(CommandHandler("ecocentro", send_ecocentro_openings))
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
 
     notifications_config = config.get('notifications', {})
