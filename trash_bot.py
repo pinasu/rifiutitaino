@@ -5,6 +5,7 @@ import pytz
 from datetime import datetime, timedelta, time
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from zoneinfo import ZoneInfo
 
 # --- Mappatura icone e stili per i rifiuti ---
 TRASH_ICONS = {
