@@ -183,6 +183,48 @@ async def send_daily_notification(context: ContextTypes.DEFAULT_TYPE):
 
     logger.info("=== FINE INVIO NOTIFICHE GIORNALIERE ===")
 
+async def send_ecocentro_openings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tz = ZoneInfo("Europe/Rome")
+    oggi = datetime.now(tz)
+    
+    mese = oggi.month
+    giorno_settimana = oggi.weekday()  # 0 = Lunedì, 1 = Martedì, ..., 5 = Sabato, 6 = Domenica
+
+    giorni_it = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
+    nome_giorno = giorni_it[giorno_settimana]
+
+    is_estivo = (5 <= mese <= 10)
+    periodo_str = "ESTIVO" if is_estivo else "INVERNALE"
+
+    orario_oggi = None
+
+    if is_estivo:
+        if giorno_settimana in (0, 2):  # 0 = Lunedì, 2 = Mercoledì
+            orario_oggi = "🕒 14:00 - 18:00"
+        elif giorno_settimana == 5:     # 5 = Sabato
+            orario_oggi = "🕒 9:00 - 12:00 e 14:00 - 17:00"
+    else:
+        if giorno_settimana in (0, 2):  # 0 = Lunedì, 2 = Mercoledì
+            orario_oggi = "🕒 15:00 - 17:00"
+        elif giorno_settimana == 5:     # 5 = Sabato
+            orario_oggi = "🕒 9:00 - 12:00 e 14:00 - 17:00"
+
+    if orario_oggi:
+        messaggio = (
+            f"♻️ **Ecocentro di Taino** ♻️\n\n"
+            f"Oggi è **{nome_giorno}** (Periodo {periodo_str})\n"
+            f"L'ecocentro è **APERTO** con il seguente orario:\n"
+            f"{orario_oggi}"
+        )
+    else:
+        messaggio = (
+            f"♻️ **Ecocentro di Taino** ♻️\n\n"
+            f"Oggi è **{nome_giorno}** (Periodo {periodo_str})\n"
+            f"Spiacente, oggi l'ecocentro è **CHIUSO**. 🛑"
+        )
+
+    await update.message.reply_text(messaggio, parse_mode="Markdown")
+
 def main():
     global subscribers
     subscribers = load_subscribers()
@@ -193,6 +235,7 @@ def main():
     
     application = Application.builder().token(config['token']).build()
     application.add_handler(CommandHandler('trash', send_trash_exposure))
+    application.add_handler(CommandHandler("ecocentro", ecocentro))
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
 
     notifications_config = config.get('notifications', {})
