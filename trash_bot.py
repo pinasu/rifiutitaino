@@ -32,7 +32,6 @@ def format_trash_message(trash_list):
     message += "\n⚠️ _Ricordati di esporre i sacchi/mastelli correttamente._"
     return message
 
-# --- Funzioni per gestire i sottoscrittori ---
 def load_subscribers():
     if os.path.exists('subscribers.json'):
         with open('subscribers.json', 'r') as f:
@@ -51,7 +50,6 @@ def add_chat_id(chat_id):
         return True
     return False
 
-# --- Configurazione Logging ---
 def setup_logging():
     if not os.path.exists('logs'):
         os.makedirs('logs')
