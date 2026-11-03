@@ -1,5 +1,8 @@
 """Handler Telegram: ricevono l'update, prendono i dati e inviano il messaggio preparato in messages.py."""
+import asyncio
+
 from telegram import Update
+from telegram.error import Forbidden, RetryAfter
 from telegram.ext import ContextTypes
 
 from . import sources, storage
@@ -86,15 +89,30 @@ async def send_daily_notification(context: ContextTypes.DEFAULT_TYPE):
     formatted_message = format_trash_message(trash_info)
     logger.info(f"Messaggio da inviare: {formatted_message}")
 
-    for chat_id in storage.subscribers:
+    # Copia della lista: chi ha bloccato il bot viene rimosso durante il ciclo
+    for chat_id in list(storage.subscribers):
         try:
-            # Aggiunto parse_mode="Markdown" anche qui per l'invio pianificato automatico delle 20:00
-            await context.bot.send_message(chat_id=chat_id, text=formatted_message, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
+            await send_with_retry(context.bot, chat_id, formatted_message)
             logger.info(f"✅ Notifica inviata a chat_id: {chat_id}")
+        except Forbidden:
+            storage.remove_chat_id(chat_id)
+            logger.info(f"🚫 {chat_id} ha bloccato il bot: rimosso dagli iscritti")
         except Exception as e:
             logger.error(f"❌ Errore nell'invio a {chat_id}: {e}")
 
     logger.info("=== FINE INVIO NOTIFICHE GIORNALIERE ===")
+
+
+async def send_with_retry(bot, chat_id, text):
+    """Invia la notifica; se Telegram chiede di rallentare (RetryAfter) aspetta e riprova una volta."""
+    try:
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
+    except RetryAfter as e:
+        # retry_after è in secondi (int) o un timedelta, a seconda della versione della libreria
+        attesa = e.retry_after.total_seconds() if hasattr(e.retry_after, "total_seconds") else e.retry_after
+        logger.warning(f"Limite di Telegram raggiunto, riprovo l'invio a {chat_id} tra {attesa} s")
+        await asyncio.sleep(attesa)
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
 
 
 async def send_ecocentro_openings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

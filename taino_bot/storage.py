@@ -40,6 +40,12 @@ def add_chat_id(chat_id):
     return False
 
 
+def remove_chat_id(chat_id):
+    if chat_id in subscribers:
+        subscribers.remove(chat_id)
+        save_subscribers()
+
+
 def load_medici_utenti():
     if os.path.exists(data_path(MEDICI_UTENTI_FILE)):
         with open(data_path(MEDICI_UTENTI_FILE), 'r') as f:

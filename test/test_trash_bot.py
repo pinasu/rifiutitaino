@@ -348,6 +348,29 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(self.context.bot.send_message.call_count, 2)
 
+    async def test_daily_notification_removes_users_who_blocked_the_bot(self):
+        from telegram.error import Forbidden
+        storage.subscribers = [1, 2]
+        self.context.bot.send_message.side_effect = [Forbidden("bot was blocked by the user"), None]
+        with patch.object(utils, "datetime", fake_datetime(datetime(2026, 1, 5, 20, 0))):
+            await handlers.send_daily_notification(self.context)
+
+        self.assertEqual(storage.subscribers, [2])
+        self.assertEqual(storage.load_subscribers(), [2])
+        self.assertEqual(self.context.bot.send_message.call_count, 2)
+
+    async def test_daily_notification_retries_after_flood_limit(self):
+        from telegram.error import RetryAfter
+        storage.subscribers = [1]
+        self.context.bot.send_message.side_effect = [RetryAfter(3), None]
+        with patch.object(utils, "datetime", fake_datetime(datetime(2026, 1, 5, 20, 0))), \
+             patch("asyncio.sleep", AsyncMock()) as sleep:
+            await handlers.send_daily_notification(self.context)
+
+        sleep.assert_awaited_once_with(3)
+        self.assertEqual(self.context.bot.send_message.call_count, 2)
+        self.assertEqual(storage.subscribers, [1])
+
     # --- Ecocentro ---
 
     async def ecocentro_reply(self, giorno):
