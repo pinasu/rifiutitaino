@@ -196,6 +196,18 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         with patch.object(tb, "datetime", fake_datetime(datetime(2026, 1, 5, 18, 0))):
             self.assertEqual(tb.get_trash_exposure_date(), ["UMIDO", "CARTA", "PLASTICA"])
 
+    def test_tomorrow_uses_rome_time_even_if_system_clock_is_utc(self):
+        from datetime import timezone
+        utc_now = datetime(2026, 1, 5, 23, 30, tzinfo=timezone.utc)  # a Roma è già il 6 gennaio, 00:30
+
+        class UtcSystemDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return utc_now.astimezone(tz) if tz else utc_now.replace(tzinfo=None)
+
+        with patch.object(tb, "datetime", UtcSystemDatetime):
+            self.assertEqual(tb.chiave_domani(), "07-01-26")
+
     def test_get_trash_exposure_date_no_collection(self):
         with patch.object(tb, "datetime", fake_datetime(datetime(2026, 1, 10, 18, 0))):
             self.assertEqual(tb.get_trash_exposure_date(), [])

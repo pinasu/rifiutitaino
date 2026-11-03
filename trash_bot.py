@@ -253,7 +253,7 @@ def adesso():
 
 def chiave_domani():
     """Data di domani nel formato delle chiavi del calendario (GG-MM-AA)."""
-    return (datetime.now() + timedelta(days=1)).strftime('%d-%m-%y')
+    return (adesso() + timedelta(days=1)).strftime('%d-%m-%y')
 
 def get_trash_exposure_date():
     next_day = chiave_domani()
