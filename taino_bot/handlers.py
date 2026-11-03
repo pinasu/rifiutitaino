@@ -29,7 +29,8 @@ async def send_trash_exposure(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     formatted_message = format_trash_message(trash_info)
     await context.bot.send_message(chat_id=chat_id, text=formatted_message, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
-    logger.info(f"Messaggio inviato a {chat_id}: {formatted_message}")
+    logger.info(f"Messaggio /trash inviato a {chat_id}")
+    logger.debug(f"Testo inviato a {chat_id}: {formatted_message}")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -48,27 +49,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     chat_id = update.effective_chat.id
 
-    try:
-        await update.effective_message.delete()
-    except Exception as e:
-        logger.warning(f"Impossibile cancellare il messaggio di {chat_id}: {e}")
-
-    # Tiene in chat un solo promemoria: cancella quello inviato in precedenza
-    hint_id = context.chat_data.pop("hint_message_id", None)
-    if hint_id:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=hint_id)
-        except Exception as e:
-            logger.warning(f"Impossibile cancellare il promemoria precedente in {chat_id}: {e}")
-
     if storage.add_chat_id(chat_id):
         testo = MSG_HINT_NUOVO
         logger.info(f"Aggiunto nuovo sottoscrittore da messaggio: {chat_id}")
     else:
         testo = MSG_HINT
 
-    hint = await context.bot.send_message(chat_id=chat_id, text=testo, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
+    # Le tre chiamate sono indipendenti: partono insieme, così l'utente aspetta un solo giro di rete
+    chiamate = [
+        delete_quietly(update.effective_message.delete(), f"Impossibile cancellare il messaggio di {chat_id}"),
+        context.bot.send_message(chat_id=chat_id, text=testo, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
+    ]
+    # Tiene in chat un solo promemoria: cancella quello inviato in precedenza
+    hint_id = context.chat_data.pop("hint_message_id", None)
+    if hint_id:
+        chiamate.append(delete_quietly(
+            context.bot.delete_message(chat_id=chat_id, message_id=hint_id),
+            f"Impossibile cancellare il promemoria precedente in {chat_id}"
+        ))
+
+    _, hint, *_ = await asyncio.gather(*chiamate)
     context.chat_data["hint_message_id"] = hint.message_id
+
+
+async def delete_quietly(cancellazione, messaggio_errore):
+    """Esegue una cancellazione: se fallisce (es. messaggio troppo vecchio) scrive solo un avviso nel log."""
+    try:
+        await cancellazione
+    except Exception as e:
+        logger.warning(f"{messaggio_errore}: {e}")
 
 
 async def send_daily_notification(context: ContextTypes.DEFAULT_TYPE):
@@ -87,7 +96,7 @@ async def send_daily_notification(context: ContextTypes.DEFAULT_TYPE):
         return
 
     formatted_message = format_trash_message(trash_info)
-    logger.info(f"Messaggio da inviare: {formatted_message}")
+    logger.debug(f"Messaggio da inviare: {formatted_message}")
 
     # Copia della lista: chi ha bloccato il bot viene rimosso durante il ciclo
     for chat_id in list(storage.subscribers):

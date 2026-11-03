@@ -306,6 +306,28 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         self.context.bot.delete_message.assert_awaited_once_with(chat_id=42, message_id=99)
         self.assertEqual(self.context.chat_data["hint_message_id"], 100)
 
+    async def test_handle_message_calls_telegram_in_parallel(self):
+        storage.subscribers = [42]
+        self.context.chat_data["hint_message_id"] = 99
+        latenza = 0.2
+
+        async def lenta(*args, **kwargs):
+            await asyncio.sleep(latenza)
+            return SimpleNamespace(message_id=100)
+
+        update = self.make_update()
+        update.message.delete = AsyncMock(side_effect=lenta)
+        self.context.bot.delete_message = AsyncMock(side_effect=lenta)
+        self.context.bot.send_message = AsyncMock(side_effect=lenta)
+
+        inizio = asyncio.get_running_loop().time()
+        await handlers.handle_message(update, self.context)
+        durata = asyncio.get_running_loop().time() - inizio
+
+        # In sequenza servirebbero 3 × 0,2 s; in parallelo circa 0,2 s
+        self.assertLess(durata, 2 * latenza)
+        self.assertEqual(self.context.chat_data["hint_message_id"], 100)
+
     async def test_handle_message_works_if_delete_fails(self):
         storage.subscribers = [42]
         update = self.make_update()
