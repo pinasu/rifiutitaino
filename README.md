@@ -27,7 +27,7 @@ In più, **ogni sera alle 20:00** il bot ti manda un promemoria con i rifiuti da
 
 La prima volta che premi **/medico** il bot ti chiede chi è il tuo medico di base (Htet Htet Ne Win o Valentina Marzo) e se lo ricorda per le volte successive. Per cambiarlo, premi **🔄 Cambia medico** sotto la risposta.
 
-Non devi scrivere niente: basta premere i bottoni. Se vuoi tornare alla tastiera normale, tocca l'icona accanto al campo di testo.
+Il bot si usa **solo con i bottoni**. Se scrivi un messaggio a mano, il bot lo cancella e ti ricorda di usare i bottoni.
 
 ### Orari dei medici di base
 
@@ -177,6 +177,10 @@ rifiutitaino/
 ### Come funziona
 
 - **Comandi e bottoni**: i bottoni sono una `ReplyKeyboardMarkup` persistente. Quando l'utente preme un bottone, Telegram invia in chat il testo del bottone (`/trash`, ...) come se l'avesse scritto l'utente, e lo gestisce il `CommandHandler` corrispondente.
+- **Solo bottoni**: Telegram non permette ai bot di disattivare il campo di testo, quindi:
+  - nel campo di testo compare la scritta "Usa i bottoni qui sotto 👇" (`input_field_placeholder`);
+  - `handle_message`, registrato per ultimo con `filters.ALL`, riceve tutto ciò che non è un comando dei bottoni (testo libero, comandi sconosciuti, foto, messaggi modificati). Cancella il messaggio e risponde con un promemoria;
+  - l'id del promemoria viene salvato in `context.chat_data`, e il promemoria precedente viene cancellato prima di mandarne uno nuovo, così in chat ne resta sempre uno solo.
 - **Iscrizioni**: ogni chat che usa `/start`, `/trash` o scrive un messaggio viene aggiunta a `subscribers.json` e riceve il promemoria serale.
 - **Promemoria**: è un job giornaliero della `JobQueue`, all'orario indicato in `config.json`.
 - **Ecocentro**: gli orari sono scritti direttamente nel codice (`send_ecocentro_openings`). Se il Comune li cambia, vanno aggiornati lì.
@@ -192,6 +196,8 @@ rifiutitaino/
 - Gli orari della dr. Marzo non si aggiornano da soli: vanno ricopiati nel codice a ogni nuovo volantino.
 - La pagina della dott.ssa Htet è scritta a mano sul sito del Comune. Se cambia il formato del testo, o se gli orari nuovi escono in un'altra news, `/medico` va adattato (`MEDICO_URL` e `fetch_medico_info`).
 - Anche `/biblioteca` dipende dalla struttura della pagina del Comune. Se gli orari spariscono dall'elenco della sezione "Ulteriori informazioni", il bot risponde che non riesce a recuperarli e `fetch_biblioteca_info` va adattato.
+- Non si può impedire del tutto di scrivere: è un limite di Telegram. Toccando il campo di testo compare comunque la tastiera del telefono, ma i messaggi scritti vengono cancellati. Scrivere a mano un comando valido (es. `/trash`) funziona come premere il bottone.
+- L'id dell'ultimo promemoria è tenuto in memoria: dopo un riavvio del bot, il promemoria precedente non viene cancellato.
 - Il calendario della raccolta va aggiornato a mano ogni anno.
 - Un utente non può disiscriversi dal promemoria: per ora bisogna togliere la sua chat da `subscribers.json`.
 

@@ -121,11 +121,17 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
             if os.path.exists(nome):
                 os.remove(nome)
 
-        self.context = SimpleNamespace(bot=SimpleNamespace(send_message=AsyncMock()))
+        self.context = SimpleNamespace(
+            bot=SimpleNamespace(
+                send_message=AsyncMock(return_value=SimpleNamespace(message_id=100)),
+                delete_message=AsyncMock()
+            ),
+            chat_data={}
+        )
 
     def make_update(self, chat_id=42):
-        message = SimpleNamespace(reply_text=AsyncMock())
-        return SimpleNamespace(effective_chat=SimpleNamespace(id=chat_id), message=message)
+        message = SimpleNamespace(reply_text=AsyncMock(), delete=AsyncMock())
+        return SimpleNamespace(effective_chat=SimpleNamespace(id=chat_id), message=message, effective_message=message)
 
     def make_callback_update(self, data, chat_id=42):
         query = SimpleNamespace(
@@ -218,20 +224,45 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         update.message.reply_text.assert_not_called()
         self.context.bot.send_message.assert_called_once()
 
+    def test_commands_keyboard_has_placeholder(self):
+        self.assertIn("bottoni", tb.COMMANDS_KEYBOARD.input_field_placeholder)
+
     async def test_handle_message_new_user_is_subscribed(self):
         update = self.make_update()
         await tb.handle_message(update, self.context)
 
         self.assertEqual(tb.subscribers, [42])
-        self.assertIn("aggiunto", update.message.reply_text.call_args.args[0])
+        update.message.delete.assert_awaited_once()
+        self.assertIn("aggiunto", self.sent_texts()[0])
 
-    async def test_handle_message_existing_user_gets_keyboard(self):
+    async def test_handle_message_deletes_text_and_shows_keyboard(self):
         tb.subscribers = [42]
         update = self.make_update()
         await tb.handle_message(update, self.context)
 
-        self.assertIn("bottoni", update.message.reply_text.call_args.args[0])
-        self.assertIs(update.message.reply_text.call_args.kwargs["reply_markup"], tb.COMMANDS_KEYBOARD)
+        update.message.delete.assert_awaited_once()
+        self.assertIn("solo con i bottoni", self.sent_texts()[0])
+        self.assertIs(self.context.bot.send_message.call_args.kwargs["reply_markup"], tb.COMMANDS_KEYBOARD)
+        self.assertEqual(self.context.chat_data["hint_message_id"], 100)
+
+    async def test_handle_message_replaces_previous_hint(self):
+        tb.subscribers = [42]
+        self.context.chat_data["hint_message_id"] = 99
+        await tb.handle_message(self.make_update(), self.context)
+
+        self.context.bot.delete_message.assert_awaited_once_with(chat_id=42, message_id=99)
+        self.assertEqual(self.context.chat_data["hint_message_id"], 100)
+
+    async def test_handle_message_works_if_delete_fails(self):
+        tb.subscribers = [42]
+        update = self.make_update()
+        update.message.delete.side_effect = Exception("messaggio troppo vecchio")
+        self.context.chat_data["hint_message_id"] = 99
+        self.context.bot.delete_message.side_effect = Exception("promemoria già cancellato")
+        await tb.handle_message(update, self.context)
+
+        self.context.bot.send_message.assert_awaited_once()
+        self.assertEqual(self.context.chat_data["hint_message_id"], 100)
 
     # --- Notifica giornaliera ---
 

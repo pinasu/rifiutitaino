@@ -62,7 +62,8 @@ COMMANDS_KEYBOARD = ReplyKeyboardMarkup(
         [KeyboardButton("/medico"), KeyboardButton("/biblioteca")]
     ],
     resize_keyboard=True,
-    is_persistent=True
+    is_persistent=True,
+    input_field_placeholder="Usa i bottoni qui sotto 👇"
 )
 
 # --- Mappatura icone e stili per i rifiuti ---
@@ -235,13 +236,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestisce tutto ciò che non è un comando dei bottoni: testo libero, comandi sconosciuti, foto, ecc.
+
+    Telegram non permette di disattivare il campo di testo, quindi il messaggio dell'utente
+    viene cancellato e si ricorda di usare i bottoni.
+    """
     global subscribers
     chat_id = update.effective_chat.id
+
+    try:
+        await update.effective_message.delete()
+    except Exception as e:
+        logger.warning(f"Impossibile cancellare il messaggio di {chat_id}: {e}")
+
+    # Tiene in chat un solo promemoria: cancella quello inviato in precedenza
+    hint_id = context.chat_data.pop("hint_message_id", None)
+    if hint_id:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=hint_id)
+        except Exception as e:
+            logger.warning(f"Impossibile cancellare il promemoria precedente in {chat_id}: {e}")
+
     if add_chat_id(chat_id):
-        await update.message.reply_text("🔔 *Ti ho aggiunto alla lista delle notifiche delle 20:00!*", parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
+        testo = "🔔 *Ti ho aggiunto alla lista delle notifiche delle 20:00!*\n\n👇 Usa i bottoni qui sotto per i comandi."
         logger.info(f"Aggiunto nuovo sottoscrittore da messaggio: {chat_id}")
     else:
-        await update.message.reply_text("👇 Usa i bottoni qui sotto per i comandi.", reply_markup=COMMANDS_KEYBOARD)
+        testo = "👇 Puoi usare il bot solo con i bottoni qui sotto."
+
+    hint = await context.bot.send_message(chat_id=chat_id, text=testo, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
+    context.chat_data["hint_message_id"] = hint.message_id
 
 async def send_daily_notification(context: ContextTypes.DEFAULT_TYPE):
     global subscribers
@@ -575,7 +598,8 @@ def main():
     application.add_handler(CommandHandler("medico", send_medico_hours))
     application.add_handler(CommandHandler("biblioteca", send_biblioteca_hours))
     application.add_handler(CallbackQueryHandler(handle_medico_choice, pattern=r'^medico:'))
-    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
+    # Registrato per ultimo: riceve solo ciò che nessun handler precedente ha gestito (compresi i comandi sconosciuti)
+    application.add_handler(MessageHandler(filters.ALL, handle_message))
 
     notifications_config = config.get('notifications', {})
     if notifications_config.get('enabled', False):
