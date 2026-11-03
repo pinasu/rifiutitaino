@@ -97,6 +97,12 @@ def format_trash_message(trash_list):
     message += "\n⚠️ _Ricordati di esporre i sacchi/mastelli correttamente._"
     return message
 
+# --- Stato del bot: riempito da main(), vuoto finché il bot non parte ---
+logger = logging.getLogger('trash_bot')
+subscribers = []      # chat iscritte alla notifica serale
+medici_utenti = {}    # chat_id (stringa) -> id del medico scelto
+calendar_data = {}    # "GG-MM-AA" -> rifiuti da esporre quel giorno
+
 def save_json(path, data):
     """Scrive il file in modo atomico: se il Raspberry si spegne a metà, il file vecchio resta intatto."""
     tmp_path = f"{path}.tmp"
@@ -136,10 +142,11 @@ def save_medico_utente(chat_id, medico_id):
     save_json(MEDICI_UTENTI_FILE, medici_utenti)
 
 def setup_logging():
+    if logger.handlers:
+        return logger
     if not os.path.exists('logs'):
         os.makedirs('logs')
 
-    logger = logging.getLogger('trash_bot')
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
@@ -191,24 +198,26 @@ def setup_logging():
     logger.addHandler(log_handler)
     return logger
 
-logger = setup_logging()
+def load_config():
+    """Legge config.json e il calendario indicato al suo interno."""
+    try:
+        with open('config.json', 'r') as f:
+            config = json.load(f)
+        logger.info("Configurazione caricata con successo.")
 
-try:
-    with open('config.json', 'r') as f:
-        config = json.load(f)
-    logger.info("Configurazione caricata con successo.")
+        with open(config['calendar_file'], 'r') as f:
+            calendar = json.load(f)
+        logger.info(f"Calendario caricato da {config['calendar_file']}.")
 
-    with open(config['calendar_file'], 'r') as f:
-        calendar_data = json.load(f)
-    logger.info(f"Calendario caricato da {config['calendar_file']}.")
+    except FileNotFoundError as e:
+        logger.error(f"File non trovato: {e.filename}")
+        raise
 
-except FileNotFoundError as e:
-    logger.error(f"File non trovato: {e.filename}")
-    raise
+    except json.JSONDecodeError:
+        logger.error("Errore nel parsing del file JSON.")
+        raise
 
-except json.JSONDecodeError:
-    logger.error("Errore nel parsing del file JSON.")
-    raise
+    return config, calendar
 
 def get_trash_exposure_date():
     next_day = (datetime.now() + timedelta(days=1)).strftime('%d-%m-%y')
@@ -623,7 +632,9 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.error("Errore durante la gestione di un update", exc_info=context.error)
 
 def main():
-    global subscribers, medici_utenti
+    global subscribers, medici_utenti, calendar_data
+    setup_logging()
+    config, calendar_data = load_config()
     subscribers = load_subscribers()
     medici_utenti = load_medici_utenti()
 

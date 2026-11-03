@@ -17,8 +17,8 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# trash_bot legge config.json e il calendario all'import e scrive log e file JSON
-# nella cartella corrente: lavoriamo in una cartella temporanea per non toccare i file veri.
+# trash_bot legge config.json e scrive log e file JSON nella cartella corrente:
+# lavoriamo in una cartella temporanea per non toccare i file veri.
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEST_DIR = tempfile.mkdtemp(prefix="trash_bot_test_")
 CALENDARIO = {
@@ -35,6 +35,8 @@ os.chdir(TEST_DIR)
 sys.path.insert(0, PROJECT_DIR)
 
 import trash_bot as tb  # noqa: E402
+
+tb.setup_logging()
 
 # Estratto della news del Comune con la stessa struttura HTML della pagina reale
 HTET_HTML = """
@@ -135,6 +137,7 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         tb.subscribers = []
         tb.medici_utenti = {}
+        tb.calendar_data = dict(CALENDARIO)
         tb._page_cache.clear()
         tb._page_cache_locks.clear()
         for nome in ("subscribers.json", tb.MEDICI_UTENTI_FILE):
@@ -670,10 +673,16 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
 
     # --- Avvio del bot ---
 
+    def test_import_has_no_side_effects(self):
+        self.assertEqual(tb.subscribers, [])
+        self.assertIsInstance(tb.medici_utenti, dict)
+
     def test_main_registers_handlers_and_daily_job(self):
         with patch.object(tb.Application, "run_polling", autospec=True) as run_polling:
             tb.main()
 
+        self.assertEqual(tb.calendar_data, CALENDARIO)
+        self.assertEqual(len(tb.logger.handlers), 1)
         app = run_polling.call_args.args[0]
         comandi = sorted(c for h in app.handlers[0] if hasattr(h, "commands") for c in h.commands)
         self.assertEqual(comandi, ["biblioteca", "ecocentro", "medico", "start", "trash"])
