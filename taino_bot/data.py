@@ -21,7 +21,7 @@ ECOCENTRO_ORARI = {
 # --- Pagina del Comune di Taino con gli orari della dott.ssa Htet ---
 MEDICO_URL = "https://www.comune.taino.va.it/it/news/132139/nuovo-medico-di-medicina-generale"
 
-# --- Orari dr. Marzo (dal volantino data/marzo.pdf) ---
+# --- Orari dr. Marzo (dal volantino data/doctors/marzo.pdf) ---
 # Al mattino è attiva la segreteria, al pomeriggio il medico riceve solo su appuntamento
 MARZO_STUDI = [
     {

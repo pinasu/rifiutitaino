@@ -143,6 +143,10 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         sources.calendar_data = dict(CALENDARIO)
         web._page_cache.clear()
         web._page_cache_locks.clear()
+        web.RETRY_DELAY = 0
+        for nome in (web.PAGE_CACHE_FILE,):
+            if os.path.exists(nome):
+                os.remove(nome)
         for nome in ("subscribers.json", storage.MEDICI_UTENTI_FILE):
             if os.path.exists(nome):
                 os.remove(nome)
@@ -733,10 +737,64 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await web.get_cached("biblioteca", sources.fetch_biblioteca_info), valido)
 
     async def test_cache_without_copy_propagates_error(self):
-        with patch("urllib.request.urlopen", side_effect=OSError("rete assente")):
+        with patch("urllib.request.urlopen", side_effect=OSError("rete assente")) as urlopen:
             with self.assertRaises(OSError):
                 await web.get_cached("biblioteca", sources.fetch_biblioteca_info)
         self.assertNotIn("biblioteca", web._page_cache)
+        self.assertEqual(urlopen.call_count, 2)  # un nuovo tentativo, poi l'errore
+
+    @staticmethod
+    def http_500():
+        import urllib.error
+        return urllib.error.HTTPError(data.BIBLIOTECA_URL, 500, "Internal Server Error", {}, None)
+
+    async def test_retries_once_after_http_500_without_copy(self):
+        risposta = fake_urlopen(BIBLIOTECA_HTML).return_value
+        with patch("urllib.request.urlopen", side_effect=[self.http_500(), risposta]) as urlopen:
+            info = await web.get_cached("biblioteca", sources.fetch_biblioteca_info)
+
+        self.assertEqual(urlopen.call_count, 2)
+        self.assertIn("Mercoledì", info["orari"])
+
+    async def test_no_retry_and_no_hammering_when_copy_available(self):
+        with patch("urllib.request.urlopen", fake_urlopen(BIBLIOTECA_HTML)):
+            valido = await web.get_cached("biblioteca", sources.fetch_biblioteca_info)
+        istante, valore = web._page_cache["biblioteca"]
+        web._page_cache["biblioteca"] = (istante - web.PAGE_CACHE_TTL - 1, valore)
+
+        with patch("urllib.request.urlopen", side_effect=self.http_500()) as urlopen:
+            self.assertEqual(await web.get_cached("biblioteca", sources.fetch_biblioteca_info), valido)
+            self.assertEqual(await web.get_cached("biblioteca", sources.fetch_biblioteca_info), valido)
+
+        # Un solo tentativo, e nei minuti successivi il sito non viene ricontattato
+        self.assertEqual(urlopen.call_count, 1)
+
+    async def test_saved_copy_survives_restart(self):
+        storage.medici_utenti = {"42": "htet"}
+        with patch("urllib.request.urlopen", fake_urlopen(HTET_HTML)), \
+             patch.object(utils, "datetime", fake_datetime(datetime(2026, 1, 6, 10, 0))):
+            await handlers.send_medico_hours(self.make_update(), self.context)
+        messaggio_normale = self.sent_texts()[0]
+        self.assertTrue(os.path.exists(web.PAGE_CACHE_FILE))
+
+        # Riavvio del bot (cache in memoria vuota) mentre il sito del Comune dà errore 500
+        web._page_cache.clear()
+        self.context.bot.send_message.reset_mock()
+        with patch("urllib.request.urlopen", side_effect=self.http_500()), \
+             patch.object(utils, "datetime", fake_datetime(datetime(2026, 1, 6, 10, 0))):
+            await handlers.send_medico_hours(self.make_update(), self.context)
+
+        self.assertEqual(self.sent_texts()[0], messaggio_normale)
+
+    async def test_corrupted_saved_copy_is_ignored(self):
+        with open(web.PAGE_CACHE_FILE, "w") as f:
+            f.write("{non è json")
+        with patch("urllib.request.urlopen", fake_urlopen(BIBLIOTECA_HTML)):
+            info = await web.get_cached("biblioteca", sources.fetch_biblioteca_info)
+
+        self.assertIn("Lunedì", info["orari"])
+        with open(web.PAGE_CACHE_FILE) as f:
+            self.assertIn("biblioteca", json.load(f))
 
     async def test_error_handler_logs_exception(self):
         try:
@@ -809,6 +867,20 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(json.load(f), [7])
         self.assertTrue(os.path.exists(os.path.join(cartella, storage.MEDICI_UTENTI_FILE)))
         self.assertFalse(os.path.exists("subscribers.json"))
+
+    def test_repository_data_files_are_in_place(self):
+        import re
+        self.assertTrue(os.path.isfile(os.path.join(PROJECT_DIR, "data", "doctors", "marzo.pdf")))
+
+        # Lo stesso percorso indicato nel README per calendar_file
+        with patch.dict(os.environ, {"BOT_DATA_DIR": PROJECT_DIR}):
+            percorso = config.data_path("data/trash/2026.json")
+        with open(percorso) as f:
+            calendario = json.load(f)
+        self.assertTrue(calendario)
+        for giorno, rifiuti in calendario.items():
+            self.assertRegex(giorno, r"^\d{2}-\d{2}-26$")
+            self.assertIsInstance(rifiuti, list)
 
     def test_import_has_no_side_effects(self):
         cartella_vuota = tempfile.mkdtemp(prefix="trash_bot_import_")
@@ -890,6 +962,8 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
             storage.subscribers = list(subscribers)
             storage.medici_utenti = dict(medici or {})
             web._page_cache.clear()
+            if os.path.exists(web.PAGE_CACHE_FILE):
+                os.remove(web.PAGE_CACHE_FILE)
             ctx.chat_data.clear()
 
         async def scelta(dato, cu):

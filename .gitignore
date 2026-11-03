@@ -3,5 +3,6 @@ ponentsu_env/
 logs/
 subscribers.json
 medici_utenti.json
+page_cache.json
 __pycache__/trash_bot.cpython-312.pyc
 __pycache__/

@@ -65,7 +65,7 @@ Segreteria: 351 83 69 125 dalle 9:00 alle 10:00. Medico: 351 33 69 124, solo dop
 - **Ecocentro**: dagli orari estivi (maggio-ottobre) e invernali (novembre-aprile) dell'ecocentro di Taino.
 - **Medico**:
   - *Htet Htet Ne Win*: orari letti dalla [news del Comune di Taino](https://www.comune.taino.va.it/it/news/132139/nuovo-medico-di-medicina-generale). Il bot rilegge la pagina ogni 6 ore; se il sito non risponde, mostra gli ultimi orari letti.
-  - *Valentina Marzo*: orari presi dal volantino dell'ambulatorio (`data/marzo.pdf`).
+  - *Valentina Marzo*: orari presi dal volantino dell'ambulatorio (`data/doctors/marzo.pdf`).
 - **Biblioteca**: orari letti dalla [pagina della biblioteca](https://www.comune.taino.va.it/it/unita_organizzative/biblioteca) sul sito del Comune, riletta ogni 6 ore come quella del medico. In fondo alla risposta il bot indica la data dell'ultimo aggiornamento della pagina.
 
 ---
@@ -97,7 +97,7 @@ Crea un file `config.json` nella cartella del progetto. Il file è escluso da Gi
 ```json
 {
   "token": "123456789:ABC-IL-TUO-TOKEN",
-  "calendar_file": "2026.json",
+  "calendar_file": "data/trash/2026.json",
   "notifications": {
     "enabled": true,
     "time": "20:00"
@@ -108,7 +108,7 @@ Crea un file `config.json` nella cartella del progetto. Il file è escluso da Gi
 | Campo | Descrizione |
 |---|---|
 | `token` | Token del bot rilasciato da BotFather |
-| `calendar_file` | File JSON con il calendario della raccolta |
+| `calendar_file` | File JSON con il calendario della raccolta, relativo alla cartella del progetto (o a `BOT_DATA_DIR`) |
 | `notifications.enabled` | `true` per attivare il promemoria giornaliero |
 | `notifications.time` | Orario del promemoria (`HH:MM`, fuso Europe/Rome) |
 
@@ -178,7 +178,7 @@ Il calendario è un file JSON. Ogni chiave è una data in formato `GG-MM-AA` e i
 
 Il bot cerca la data di **domani**, perché i rifiuti si espongono la sera prima. Questi valori hanno un'icona dedicata: `UMIDO`, `CARTA`, `PLASTICA`, `VETRO E LATTINE`, `SECCO`. Qualsiasi altro valore viene mostrato con un'icona generica.
 
-**Ogni anno** va creato il nuovo file (per esempio `2027.json`) e aggiornato `calendar_file` in `config.json`.
+I calendari stanno in `data/trash/`. **Ogni anno** va creato il nuovo file (per esempio `data/trash/2027.json`) e aggiornato `calendar_file` in `config.json`.
 
 ### Struttura del progetto
 
@@ -197,15 +197,18 @@ rifiutitaino/
 │   ├── data.py         #   dati fissi: orari ecocentro e dr. Marzo, medici, URL
 │   └── utils.py        #   date e giorni della settimana
 ├── requirements.txt    # Dipendenze
-├── 2026.json           # Calendario della raccolta dell'anno corrente
 ├── config.json         # Configurazione e token (non versionato)
 ├── data/
-│   └── marzo.pdf       # Volantino con gli orari della dr. Marzo
+│   ├── doctors/
+│   │   └── marzo.pdf   # Volantino con gli orari della dr. Marzo
+│   └── trash/
+│       └── 2026.json   # Calendario della raccolta dell'anno corrente
 ├── test/
 │   ├── test_trash_bot.py  # Test automatici del bot
 │   └── snapshots/         # Testi attesi dei messaggi
 ├── subscribers.json    # Chat iscritte alle notifiche (generato, non versionato)
 ├── medici_utenti.json  # Medico scelto da ogni chat (generato, non versionato)
+├── page_cache.json     # Ultima copia valida delle pagine del Comune (generato, non versionato)
 └── logs/               # Log giornalieri (generati, non versionati)
 ```
 
@@ -224,9 +227,11 @@ rifiutitaino/
 - **Ecocentro**: gli orari sono scritti nel codice (`ECOCENTRO_ORARI` in `data.py`). Se il Comune li cambia, vanno aggiornati lì.
 - **Medico**: i medici disponibili sono elencati nel dizionario `MEDICI`. La prima volta che una chat usa `/medico`, il bot mostra dei bottoni inline per scegliere. La scelta arriva a `handle_medico_choice` (un `CallbackQueryHandler` con `callback_data` `medico:<id>`) e viene salvata in `medici_utenti.json`, con l'id della chat come chiave.
   - *Htet*: `fetch_medico_info` scarica la pagina del Comune e ne legge il testo riga per riga. Una riga in maiuscolo come `TAINO …` apre un nuovo studio, una riga come `Martedì - 9.00/11.00 Ambulatorio …` aggiunge gli orari di quel giorno. Usa solo la libreria standard (`urllib`, `re`, `html`).
-  - *Marzo*: gli orari sono scritti a mano in `MARZO_STUDI` e `MARZO_CONTATTI`, copiati da `data/marzo.pdf`. Se esce un volantino nuovo, vanno aggiornati lì.
+  - *Marzo*: gli orari sono scritti a mano in `MARZO_STUDI` e `MARZO_CONTATTI`, copiati da `data/doctors/marzo.pdf`. Se esce un volantino nuovo, vanno aggiornati lì.
 - **Biblioteca**: `fetch_biblioteca_info` scarica la pagina della biblioteca e legge l'elenco degli orari nella sezione "Ulteriori informazioni" (righe come `Mercoledì dalle 15:00 alle 18:00`), più sede, email, telefono e data di ultimo aggiornamento. Il giorno viene riconosciuto dalle prime tre lettere (`giorno_da_testo`), così il bot regge refusi come il "Lunerdì" presente oggi sulla pagina. Gli orari vengono letti a coppie, quindi funziona anche con più fasce nello stesso giorno ("dalle 9 alle 12 e dalle 15 alle 18").
-- **Pagine web**: `fetch_page` scarica le pagine e `html_to_text` ne estrae il testo. Le usano sia `/medico` sia `/biblioteca`, tramite `get_cached`, che tiene il risultato in memoria per 6 ore (`PAGE_CACHE_TTL`), scarica una sola volta anche se più utenti chiedono insieme e, se il sito non risponde, usa l'ultima copia valida.
+- **Pagine web**: `fetch_page` scarica le pagine e `html_to_text` ne estrae il testo. Le usano sia `/medico` sia `/biblioteca`, tramite `get_cached`, che tiene il risultato in memoria per 6 ore (`PAGE_CACHE_TTL`) e scarica una sola volta anche se più utenti chiedono insieme. L'ultima copia valida di ogni pagina è salvata anche in `page_cache.json`, così sopravvive ai riavvii. Se il sito non risponde (per esempio con un errore HTTP 500):
+  - con una copia disponibile il bot la usa subito e per 5 minuti non ricontatta il sito (`RETRY_AFTER_FAILURE`);
+  - senza nessuna copia riprova una volta dopo 1 s (`RETRY_DELAY`) e, se fallisce ancora, risponde che non riesce a recuperare gli orari.
 - **Log**: i log finiscono in `logs/bot_AAAA-MM-GG.log`, un file al giorno, e i file più vecchi di 7 giorni vengono cancellati.
 
 ### Limiti noti
