@@ -97,7 +97,7 @@ Crea un file `config.json` nella cartella del progetto. Il file è escluso da Gi
 ```json
 {
   "token": "123456789:ABC-IL-TUO-TOKEN",
-  "calendar_file": "data/trash/2026.json",
+  "calendar_file": "2026.json",
   "notifications": {
     "enabled": true,
     "time": "20:00"
@@ -108,7 +108,7 @@ Crea un file `config.json` nella cartella del progetto. Il file è escluso da Gi
 | Campo | Descrizione |
 |---|---|
 | `token` | Token del bot rilasciato da BotFather |
-| `calendar_file` | File JSON con il calendario della raccolta, relativo alla cartella del progetto (o a `BOT_DATA_DIR`) |
+| `calendar_file` | Nome del file JSON con il calendario della raccolta, cercato **solo** in `data/trash/` |
 | `notifications.enabled` | `true` per attivare il promemoria giornaliero |
 | `notifications.time` | Orario del promemoria (`HH:MM`, fuso Europe/Rome) |
 
@@ -178,7 +178,7 @@ Il calendario è un file JSON. Ogni chiave è una data in formato `GG-MM-AA` e i
 
 Il bot cerca la data di **domani**, perché i rifiuti si espongono la sera prima. Questi valori hanno un'icona dedicata: `UMIDO`, `CARTA`, `PLASTICA`, `VETRO E LATTINE`, `SECCO`. Qualsiasi altro valore viene mostrato con un'icona generica.
 
-I calendari stanno in `data/trash/`. **Ogni anno** va creato il nuovo file (per esempio `data/trash/2027.json`) e aggiornato `calendar_file` in `config.json`.
+I calendari stanno in `data/trash/` e il bot li cerca solo lì: in `calendar_file` conta solo il nome del file (`"2026.json"` e `"data/trash/2026.json"` indicano lo stesso file). **Ogni anno** va creato il nuovo file (per esempio `data/trash/2027.json`) e aggiornato `calendar_file` in `config.json` (es. `"2027.json"`).
 
 ### Struttura del progetto
 
