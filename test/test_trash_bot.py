@@ -32,7 +32,8 @@ CALENDARIO = {
 with open(os.path.join(TEST_DIR, "config.json"), "w") as f:
     json.dump({"token": "123:TEST", "calendar_file": "calendario.json",
                "notifications": {"enabled": True, "time": "20:00"}}, f)
-with open(os.path.join(TEST_DIR, "calendario.json"), "w") as f:
+os.makedirs(os.path.join(TEST_DIR, "data", "trash"))
+with open(os.path.join(TEST_DIR, "data", "trash", "calendario.json"), "w") as f:
     json.dump(CALENDARIO, f)
 os.chdir(TEST_DIR)
 sys.path.insert(0, PROJECT_DIR)
@@ -853,7 +854,8 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         cartella = tempfile.mkdtemp(prefix="trash_bot_data_")
         with open(os.path.join(cartella, "config.json"), "w") as f:
             json.dump({"token": "123:DIR", "calendar_file": "cal.json"}, f)
-        with open(os.path.join(cartella, "cal.json"), "w") as f:
+        os.makedirs(os.path.join(cartella, "data", "trash"))
+        with open(os.path.join(cartella, "data", "trash", "cal.json"), "w") as f:
             json.dump({"01-01-30": ["CARTA"]}, f)
 
         with patch.dict(os.environ, {"BOT_DATA_DIR": cartella}):
@@ -868,13 +870,50 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(os.path.exists(os.path.join(cartella, storage.MEDICI_UTENTI_FILE)))
         self.assertFalse(os.path.exists("subscribers.json"))
 
+    def make_data_dir(self, calendar_file, posizione_calendario):
+        """Cartella dati con config.json che punta a calendar_file e il calendario in posizione_calendario."""
+        cartella = tempfile.mkdtemp(prefix="trash_bot_cal_")
+        with open(os.path.join(cartella, "config.json"), "w") as f:
+            json.dump({"token": "123:CAL", "calendar_file": calendar_file}, f)
+        percorso = os.path.join(cartella, *posizione_calendario.split("/"))
+        os.makedirs(os.path.dirname(percorso), exist_ok=True)
+        with open(percorso, "w") as f:
+            json.dump({"05-01-26": ["CARTA"]}, f)
+        return cartella
+
+    def test_calendar_is_read_from_data_trash(self):
+        # Conta solo il nome del file: entrambi i valori indicano data/trash/2026.json
+        for calendar_file in ("2026.json", "data/trash/2026.json"):
+            with self.subTest(calendar_file=calendar_file):
+                cartella = self.make_data_dir(calendar_file, "data/trash/2026.json")
+                with patch.dict(os.environ, {"BOT_DATA_DIR": cartella}), \
+                     self.assertNoLogs("trash_bot", level="WARNING"):
+                    _, calendario = config.load_config()
+                self.assertEqual(calendario, {"05-01-26": ["CARTA"]})
+
+    def test_calendar_outside_data_trash_is_not_used(self):
+        cartella = self.make_data_dir("2026.json", "2026.json")
+        with patch.dict(os.environ, {"BOT_DATA_DIR": cartella}), \
+             self.assertLogs("trash_bot", level="ERROR") as log:
+            with self.assertRaises(FileNotFoundError):
+                config.load_config()
+        self.assertTrue(any(os.path.join("data", "trash", "2026.json") in riga for riga in log.output))
+
+    def test_missing_calendar_still_fails_clearly(self):
+        cartella = self.make_data_dir("2027.json", "data/trash/2026.json")
+        with patch.dict(os.environ, {"BOT_DATA_DIR": cartella}), \
+             self.assertLogs("trash_bot", level="ERROR") as log:
+            with self.assertRaises(FileNotFoundError):
+                config.load_config()
+        self.assertTrue(any("2027.json" in riga for riga in log.output))
+
     def test_repository_data_files_are_in_place(self):
         import re
         self.assertTrue(os.path.isfile(os.path.join(PROJECT_DIR, "data", "doctors", "marzo.pdf")))
 
-        # Lo stesso percorso indicato nel README per calendar_file
+        # Il calendario versionato è dove lo cerca il bot con "calendar_file": "2026.json"
         with patch.dict(os.environ, {"BOT_DATA_DIR": PROJECT_DIR}):
-            percorso = config.data_path("data/trash/2026.json")
+            percorso = config.calendar_path("2026.json")
         with open(percorso) as f:
             calendario = json.load(f)
         self.assertTrue(calendario)
