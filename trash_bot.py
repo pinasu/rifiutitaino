@@ -3,9 +3,18 @@ import os
 import logging
 import pytz
 from datetime import datetime, timedelta, time
-from telegram import Update
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from zoneinfo import ZoneInfo
+
+# --- Tastiera con i comandi al posto della tastiera classica ---
+# Il testo di ogni bottone viene inviato in chat come se l'avesse scritto l'utente,
+# quindi i comandi vengono gestiti dai rispettivi CommandHandler.
+COMMANDS_KEYBOARD = ReplyKeyboardMarkup(
+    [[KeyboardButton("/trash"), KeyboardButton("/ecocentro")]],
+    resize_keyboard=True,
+    is_persistent=True
+)
 
 # --- Mappatura icone e stili per i rifiuti ---
 TRASH_ICONS = {
@@ -136,22 +145,39 @@ async def send_trash_exposure(update: Update, context: ContextTypes.DEFAULT_TYPE
     global subscribers
     chat_id = update.effective_chat.id
     if add_chat_id(chat_id):
-        await update.message.reply_text("🔔 *Ti ho aggiunto alla lista delle notifiche delle 20:00!*", parse_mode="Markdown")
+        await update.message.reply_text("🔔 *Ti ho aggiunto alla lista delle notifiche delle 20:00!*", parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
         logger.info(f"Aggiunto nuovo sottoscrittore da /trash: {chat_id}")
 
     logger.info(f"Ricevuto comando /trash da chat_id: {chat_id}")
     trash_info = get_trash_exposure_date()
 
     formatted_message = format_trash_message(trash_info)
-    await context.bot.send_message(chat_id=chat_id, text=formatted_message, parse_mode="Markdown")
+    await context.bot.send_message(chat_id=chat_id, text=formatted_message, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
     logger.info(f"Messaggio inviato a {chat_id}: {formatted_message}")
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global subscribers
+    chat_id = update.effective_chat.id
+    if add_chat_id(chat_id):
+        logger.info(f"Aggiunto nuovo sottoscrittore da /start: {chat_id}")
+
+    await update.message.reply_text(
+        "👋 *Benvenuto!* Usa i bottoni qui sotto per i comandi:\n"
+        "• /trash - cosa esporre domani\n"
+        "• /ecocentro - orari di oggi dell'ecocentro\n\n"
+        "🔔 _Riceverai anche la notifica delle 20:00._",
+        parse_mode="Markdown",
+        reply_markup=COMMANDS_KEYBOARD
+    )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global subscribers
     chat_id = update.effective_chat.id
     if add_chat_id(chat_id):
-        await update.message.reply_text("🔔 *Ti ho aggiunto alla lista delle notifiche delle 20:00!*", parse_mode="Markdown")
+        await update.message.reply_text("🔔 *Ti ho aggiunto alla lista delle notifiche delle 20:00!*", parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
         logger.info(f"Aggiunto nuovo sottoscrittore da messaggio: {chat_id}")
+    else:
+        await update.message.reply_text("👇 Usa i bottoni qui sotto per i comandi.", reply_markup=COMMANDS_KEYBOARD)
 
 async def send_daily_notification(context: ContextTypes.DEFAULT_TYPE):
     global subscribers
@@ -175,7 +201,7 @@ async def send_daily_notification(context: ContextTypes.DEFAULT_TYPE):
     for chat_id in subscribers:
         try:
             # Aggiunto parse_mode="Markdown" anche qui per l'invio pianificato automatico delle 20:00
-            await context.bot.send_message(chat_id=chat_id, text=formatted_message, parse_mode="Markdown")
+            await context.bot.send_message(chat_id=chat_id, text=formatted_message, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
             logger.info(f"✅ Notifica inviata a chat_id: {chat_id}")
         except Exception as e:
             logger.error(f"❌ Errore nell'invio a {chat_id}: {e}")
@@ -222,7 +248,7 @@ async def send_ecocentro_openings(update: Update, context: ContextTypes.DEFAULT_
             f"Spiacente, oggi l'ecocentro è **CHIUSO**. 🛑"
         )
 
-    await update.message.reply_text(messaggio, parse_mode="Markdown")
+    await update.message.reply_text(messaggio, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
 
 def main():
     global subscribers
@@ -233,6 +259,7 @@ def main():
     logger.info("Avvio del bot...")
     
     application = Application.builder().token(config['token']).build()
+    application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('trash', send_trash_exposure))
     application.add_handler(CommandHandler("ecocentro", send_ecocentro_openings))
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
