@@ -13,9 +13,27 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from telegram.helpers import escape_markdown
 from zoneinfo import ZoneInfo
 
+ROME_TZ = ZoneInfo("Europe/Rome")
+GIORNI_IT = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
+
+# --- Orari dell'ecocentro: estivo da maggio a ottobre, invernale il resto dell'anno ---
+ECOCENTRO_ORARI = {
+    "ESTIVO": {
+        "Lunedì": "14:00 - 18:00",
+        "Mercoledì": "14:00 - 18:00",
+        "Sabato": "9:00 - 12:00 e 14:00 - 17:00"
+    },
+    "INVERNALE": {
+        "Lunedì": "15:00 - 17:00",
+        "Mercoledì": "15:00 - 17:00",
+        "Sabato": "9:00 - 12:00 e 14:00 - 17:00"
+    }
+}
+
+MSG_ISCRIZIONE = "🔔 *Ti ho aggiunto alla lista delle notifiche delle 20:00!*"
+
 # --- Pagina del Comune di Taino con gli orari della dott.ssa Htet ---
 MEDICO_URL = "https://www.comune.taino.va.it/it/news/132139/nuovo-medico-di-medicina-generale"
-GIORNI_IT = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
 
 # --- Orari dr. Marzo (dal volantino data/marzo.pdf) ---
 # Al mattino è attiva la segreteria, al pomeriggio il medico riceve solo su appuntamento
@@ -126,7 +144,6 @@ def save_subscribers():
     save_json(data_path('subscribers.json'), subscribers)
 
 def add_chat_id(chat_id):
-    global subscribers
     if chat_id not in subscribers:
         subscribers.append(chat_id)
         save_subscribers()
@@ -140,7 +157,6 @@ def load_medici_utenti():
     return {}
 
 def save_medico_utente(chat_id, medico_id):
-    global medici_utenti
     # Le chiavi JSON sono sempre stringhe
     medici_utenti[str(chat_id)] = medico_id
     save_json(data_path(MEDICI_UTENTI_FILE), medici_utenti)
@@ -231,8 +247,16 @@ def load_config():
 
     return config, calendar
 
+def adesso():
+    """Data e ora correnti a Taino."""
+    return datetime.now(ROME_TZ)
+
+def chiave_domani():
+    """Data di domani nel formato delle chiavi del calendario (GG-MM-AA)."""
+    return (datetime.now() + timedelta(days=1)).strftime('%d-%m-%y')
+
 def get_trash_exposure_date():
-    next_day = (datetime.now() + timedelta(days=1)).strftime('%d-%m-%y')
+    next_day = chiave_domani()
     logger.info(f"Controllo esposizione rifiuti per domani: {next_day}")
 
     if next_day in calendar_data:
@@ -242,10 +266,9 @@ def get_trash_exposure_date():
     return []
 
 async def send_trash_exposure(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global subscribers
     chat_id = update.effective_chat.id
     if add_chat_id(chat_id):
-        await update.message.reply_text("🔔 *Ti ho aggiunto alla lista delle notifiche delle 20:00!*", parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
+        await update.message.reply_text(MSG_ISCRIZIONE, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
         logger.info(f"Aggiunto nuovo sottoscrittore da /trash: {chat_id}")
 
     logger.info(f"Ricevuto comando /trash da chat_id: {chat_id}")
@@ -256,7 +279,6 @@ async def send_trash_exposure(update: Update, context: ContextTypes.DEFAULT_TYPE
     logger.info(f"Messaggio inviato a {chat_id}: {formatted_message}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global subscribers
     chat_id = update.effective_chat.id
     if add_chat_id(chat_id):
         logger.info(f"Aggiunto nuovo sottoscrittore da /start: {chat_id}")
@@ -278,7 +300,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Telegram non permette di disattivare il campo di testo, quindi il messaggio dell'utente
     viene cancellato e si ricorda di usare i bottoni.
     """
-    global subscribers
     chat_id = update.effective_chat.id
 
     try:
@@ -295,7 +316,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.warning(f"Impossibile cancellare il promemoria precedente in {chat_id}: {e}")
 
     if add_chat_id(chat_id):
-        testo = "🔔 *Ti ho aggiunto alla lista delle notifiche delle 20:00!*\n\n👇 Usa i bottoni qui sotto per i comandi."
+        testo = f"{MSG_ISCRIZIONE}\n\n👇 Usa i bottoni qui sotto per i comandi."
         logger.info(f"Aggiunto nuovo sottoscrittore da messaggio: {chat_id}")
     else:
         testo = "👇 Puoi usare il bot solo con i bottoni qui sotto."
@@ -304,9 +325,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.chat_data["hint_message_id"] = hint.message_id
 
 async def send_daily_notification(context: ContextTypes.DEFAULT_TYPE):
-    global subscribers
     logger.info("=== INIZIO INVIO NOTIFICHE GIORNALIERE ===")
-    next_day = (datetime.now() + timedelta(days=1)).strftime('%d-%m-%y')
+    next_day = chiave_domani()
 
     if not subscribers:
         logger.warning("Nessun sottoscrittore configurato per le notifiche.")
@@ -333,37 +353,17 @@ async def send_daily_notification(context: ContextTypes.DEFAULT_TYPE):
     logger.info("=== FINE INVIO NOTIFICHE GIORNALIERE ===")
 
 async def send_ecocentro_openings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    tz = ZoneInfo("Europe/Rome")
-    oggi = datetime.now(tz)
-    
-    mese = oggi.month
-    giorno_settimana = oggi.weekday()  # 0 = Lunedì, 1 = Martedì, ..., 5 = Sabato, 6 = Domenica
-
-    giorni_it = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
-    nome_giorno = giorni_it[giorno_settimana]
-
-    is_estivo = (5 <= mese <= 10)
-    periodo_str = "ESTIVO" if is_estivo else "INVERNALE"
-
-    orario_oggi = None
-
-    if is_estivo:
-        if giorno_settimana in (0, 2):  # 0 = Lunedì, 2 = Mercoledì
-            orario_oggi = "🕒 14:00 - 18:00"
-        elif giorno_settimana == 5:     # 5 = Sabato
-            orario_oggi = "🕒 9:00 - 12:00 e 14:00 - 17:00"
-    else:
-        if giorno_settimana in (0, 2):  # 0 = Lunedì, 2 = Mercoledì
-            orario_oggi = "🕒 15:00 - 17:00"
-        elif giorno_settimana == 5:     # 5 = Sabato
-            orario_oggi = "🕒 9:00 - 12:00 e 14:00 - 17:00"
+    oggi = adesso()
+    nome_giorno = GIORNI_IT[oggi.weekday()]
+    periodo_str = "ESTIVO" if 5 <= oggi.month <= 10 else "INVERNALE"
+    orario_oggi = ECOCENTRO_ORARI[periodo_str].get(nome_giorno)
 
     if orario_oggi:
         messaggio = (
             f"♻️ **Ecocentro di Taino** ♻️\n\n"
             f"Oggi è **{nome_giorno}** (Periodo {periodo_str})\n"
             f"L'ecocentro è **APERTO** con il seguente orario:\n"
-            f"{orario_oggi}"
+            f"🕒 {orario_oggi}"
         )
     else:
         messaggio = (
@@ -415,8 +415,7 @@ def fetch_medico_info():
         raise ValueError("Sezione descrizione non trovata nella pagina del Comune")
 
     testo = re.sub(r'<br\s*/?>|</p>', '\n', descrizione.group(1))
-    testo = html.unescape(re.sub(r'<[^>]+>', '', testo)).replace('\xa0', ' ')
-    righe = [re.sub(r'\s+', ' ', r).strip() for r in testo.split('\n')]
+    righe = [html_to_text(r) for r in testo.split('\n')]
     righe = [r for r in righe if r]
 
     giorni_regex = re.compile(r'^(' + '|'.join(GIORNI_IT) + r')\s*-\s*(.*)$', re.IGNORECASE)
@@ -515,7 +514,7 @@ async def send_medico_message(chat_id, medico_id, context: ContextTypes.DEFAULT_
             )
             return
 
-    nome_giorno = GIORNI_IT[datetime.now(ZoneInfo("Europe/Rome")).weekday()]
+    nome_giorno = GIORNI_IT[adesso().weekday()]
     messaggio = f"🩺 *{escape_markdown(MEDICI[medico_id])}* 🩺\n\nOggi è *{nome_giorno}*\n\n"
 
     studi_aperti = 0
@@ -611,7 +610,7 @@ async def send_biblioteca_hours(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    nome_giorno = GIORNI_IT[datetime.now(ZoneInfo("Europe/Rome")).weekday()]
+    nome_giorno = GIORNI_IT[adesso().weekday()]
     fasce_oggi = info["orari"].get(nome_giorno)
 
     messaggio = f"📚 *Biblioteca di Taino* 📚\n\nOggi è *{nome_giorno}*\n"
