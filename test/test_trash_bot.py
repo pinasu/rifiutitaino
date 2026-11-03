@@ -655,6 +655,19 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(os.path.isabs(handler.baseFilename))
         self.assertTrue(os.path.exists(os.path.join("logs", "bot_2030-01-01.log")))
 
+    def test_old_logs_are_deleted_on_day_change(self):
+        vecchio = os.path.join("logs", "bot_2029-12-01.log")
+        recente = os.path.join("logs", "bot_2029-12-30.log")
+        for nome in (vecchio, recente):
+            with open(nome, "w") as f:
+                f.write("log\n")
+
+        with patch.object(tb, "datetime", fake_datetime(datetime(2030, 1, 2, 10, 0))):
+            tb.logger.info("nuovo giorno")
+
+        self.assertFalse(os.path.exists(vecchio))
+        self.assertTrue(os.path.exists(recente))
+
     # --- Avvio del bot ---
 
     def test_main_registers_handlers_and_daily_job(self):

@@ -156,7 +156,7 @@ def setup_logging():
 
         def _cleanup_old_logs(self):
             now = datetime.now()
-            log_dir = os.path.dirname(self.filename_template.split('/')[0]) or '.'
+            log_dir = os.path.dirname(self.filename_template) or '.'
             if not os.path.exists(log_dir): return
             
             for fname in os.listdir(log_dir):
@@ -178,6 +178,8 @@ def setup_logging():
                     self.stream = None
                 # Assoluto come in FileHandler: con un percorso relativo il confronto sopra fallirebbe sempre
                 self.baseFilename = os.path.abspath(target_filename)
+                # Il bot resta acceso per mesi: la pulizia va fatta a ogni cambio di giorno, non solo all'avvio
+                self._cleanup_old_logs()
             super().emit(record)
 
     log_handler = DailyLogHandler(
