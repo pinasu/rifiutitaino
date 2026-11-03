@@ -2,11 +2,11 @@
 import os
 from datetime import time
 
-import pytz
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
 from . import handlers, sources, storage
 from .config import data_path, load_config
+from .data import ROME_TZ
 from .logs import logger, setup_logging
 
 
@@ -29,12 +29,10 @@ def build_application(config):
         try:
             hour, minute = map(int, notifications_config['time'].split(':'))
 
-            rome_tz = pytz.timezone('Europe/Rome')
-
             application.job_queue.run_daily(
                 callback=handlers.send_daily_notification,
                 # Passiamo il fuso orario direttamente qui
-                time=time(hour=hour, minute=minute, tzinfo=rome_tz),
+                time=time(hour=hour, minute=minute, tzinfo=ROME_TZ),
                 days=(0, 1, 2, 3, 4, 5, 6),
                 name='daily_trash_notification'
             )

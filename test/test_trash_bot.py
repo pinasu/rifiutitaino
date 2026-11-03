@@ -750,6 +750,14 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         self.assertIn("minute='0'", str(trigger))
         self.assertEqual(str(trigger.timezone), "Europe/Rome")
 
+        # Alle 20:00 di Roma sia con l'ora solare sia con l'ora legale
+        from datetime import timezone
+        for oggi, ora_utc in ((datetime(2026, 1, 15, 12, tzinfo=timezone.utc), 19),
+                              (datetime(2026, 7, 15, 12, tzinfo=timezone.utc), 18)):
+            prossimo = trigger.get_next_fire_time(None, oggi)
+            self.assertEqual((prossimo.hour, prossimo.minute), (20, 0))
+            self.assertEqual(prossimo.astimezone(timezone.utc).hour, ora_utc)
+
     # --- Testi esatti di tutti i messaggi ---
 
     async def record_scenario(self, scenario, giorno, chat_id=42):
