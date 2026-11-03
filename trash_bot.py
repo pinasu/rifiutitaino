@@ -1,17 +1,26 @@
 import json
 import os
+import re
+import html
+import asyncio
 import logging
+import urllib.request
 import pytz
 from datetime import datetime, timedelta, time
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.helpers import escape_markdown
 from zoneinfo import ZoneInfo
+
+# --- Pagina del Comune di Taino con gli orari del medico di base ---
+MEDICO_URL = "https://www.comune.taino.va.it/it/news/132139/nuovo-medico-di-medicina-generale"
+GIORNI_IT = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
 
 # --- Tastiera con i comandi al posto della tastiera classica ---
 # Il testo di ogni bottone viene inviato in chat come se l'avesse scritto l'utente,
 # quindi i comandi vengono gestiti dai rispettivi CommandHandler.
 COMMANDS_KEYBOARD = ReplyKeyboardMarkup(
-    [[KeyboardButton("/trash"), KeyboardButton("/ecocentro")]],
+    [[KeyboardButton("/trash"), KeyboardButton("/ecocentro"), KeyboardButton("/medico")]],
     resize_keyboard=True,
     is_persistent=True
 )
@@ -164,7 +173,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 *Benvenuto!* Usa i bottoni qui sotto per i comandi:\n"
         "• /trash - cosa esporre domani\n"
-        "• /ecocentro - orari di oggi dell'ecocentro\n\n"
+        "• /ecocentro - orari di oggi dell'ecocentro\n"
+        "• /medico - orari di oggi del medico di base\n\n"
         "🔔 _Riceverai anche la notifica delle 20:00._",
         parse_mode="Markdown",
         reply_markup=COMMANDS_KEYBOARD
@@ -250,6 +260,98 @@ async def send_ecocentro_openings(update: Update, context: ContextTypes.DEFAULT_
 
     await update.message.reply_text(messaggio, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
 
+def fetch_medico_info():
+    """Scarica la news del Comune e restituisce gli studi (con orari per giorno) e i contatti."""
+    request = urllib.request.Request(MEDICO_URL, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(request, timeout=15) as response:
+        page = response.read().decode("utf-8")
+
+    # Il testo della news è nel primo <div> senza attributi dopo la sezione "descrizione"
+    descrizione = re.search(r'id="descrizione".*?<div\s*>(.*?)</div>', page, re.S)
+    if not descrizione:
+        raise ValueError("Sezione descrizione non trovata nella pagina del Comune")
+
+    testo = re.sub(r'<br\s*/?>|</p>', '\n', descrizione.group(1))
+    testo = html.unescape(re.sub(r'<[^>]+>', '', testo)).replace('\xa0', ' ')
+    righe = [re.sub(r'\s+', ' ', r).strip() for r in testo.split('\n')]
+    righe = [r for r in righe if r]
+
+    giorni_regex = re.compile(r'^(' + '|'.join(GIORNI_IT) + r')\s*-\s*(.*)$', re.IGNORECASE)
+    studi = []
+    contatti = []
+    in_contatti = False
+
+    for riga in righe:
+        if riga.lower().startswith('contatti'):
+            in_contatti = True
+            continue
+        if in_contatti:
+            if riga.lower().startswith('richiesta'):
+                contatti.append(riga)
+            continue
+
+        # Intestazione studio, es. "TAINO c/o Centro Bielli - Via Europa, 15"
+        studio_match = re.match(r'^([A-ZÀ-Ù]{3,})\b\s*(.*)$', riga)
+        if studio_match:
+            studi.append({
+                "nome": studio_match.group(1).title(),
+                "indirizzo": studio_match.group(2).strip() or None,
+                "orari": {}
+            })
+            continue
+
+        # Riga giorno, es. "Martedì - 9.00/11.00 Ambulatorio 11.30/12.00 Ritiro Ricette"
+        giorno_match = giorni_regex.match(riga)
+        if giorno_match and studi:
+            giorno = giorno_match.group(1).capitalize()
+            fasce = []
+            for h1, m1, h2, m2, tipo in re.findall(r'(\d{1,2})[.:](\d{2})\s*/\s*(\d{1,2})[.:](\d{2})\s*([^\d]*)', giorno_match.group(2)):
+                fasce.append((f"{int(h1):02d}:{m1} - {int(h2):02d}:{m2}", tipo.strip() or "Ambulatorio"))
+            studi[-1]["orari"].setdefault(giorno, []).extend(fasce)
+
+    return studi, contatti
+
+async def send_medico_hours(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.effective_chat.id
+    logger.info(f"Ricevuto comando /medico da chat_id: {chat_id}")
+
+    try:
+        studi, contatti = await asyncio.to_thread(fetch_medico_info)
+    except Exception as e:
+        logger.error(f"Errore nel recupero degli orari del medico: {e}")
+        await update.message.reply_text(
+            "⚠️ Non sono riuscito a recuperare gli orari del medico. Riprova più tardi.",
+            reply_markup=COMMANDS_KEYBOARD
+        )
+        return
+
+    nome_giorno = GIORNI_IT[datetime.now(ZoneInfo("Europe/Rome")).weekday()]
+    messaggio = f"🩺 *Medico di base* 🩺\n\nOggi è *{nome_giorno}*\n\n"
+
+    studi_aperti = 0
+    for studio in studi:
+        fasce_oggi = studio["orari"].get(nome_giorno)
+        if not fasce_oggi:
+            continue
+
+        studi_aperti += 1
+        messaggio += f"🏥 Studio di *{escape_markdown(studio['nome'])}*\n"
+        if studio["indirizzo"]:
+            messaggio += f"📍 {escape_markdown(studio['indirizzo'])}\n"
+        for orario, tipo in fasce_oggi:
+            icona = "💊" if "ricett" in tipo.lower() else "🕒"
+            messaggio += f"{icona} {orario} {escape_markdown(tipo)}\n"
+        messaggio += "\n"
+
+    if studi_aperti == 0:
+        messaggio += "Spiacente, oggi il medico non riceve. 🛑\n\n"
+
+    for contatto in contatti:
+        messaggio += f"ℹ️ _{escape_markdown(contatto)}_\n"
+
+    await update.message.reply_text(messaggio, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
+    logger.info(f"Orari medico inviati a {chat_id}: {studi_aperti} studi aperti oggi")
+
 def main():
     global subscribers
     subscribers = load_subscribers()
@@ -262,6 +364,7 @@ def main():
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('trash', send_trash_exposure))
     application.add_handler(CommandHandler("ecocentro", send_ecocentro_openings))
+    application.add_handler(CommandHandler("medico", send_medico_hours))
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
 
     notifications_config = config.get('notifications', {})
