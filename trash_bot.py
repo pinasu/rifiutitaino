@@ -176,7 +176,8 @@ def setup_logging():
                 if self.stream:
                     self.stream.close()
                     self.stream = None
-                self.baseFilename = target_filename
+                # Assoluto come in FileHandler: con un percorso relativo il confronto sopra fallirebbe sempre
+                self.baseFilename = os.path.abspath(target_filename)
             super().emit(record)
 
     log_handler = DailyLogHandler(

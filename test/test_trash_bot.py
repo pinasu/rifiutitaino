@@ -642,6 +642,19 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("errore di prova", "\n".join(log.output))
 
+    # --- Log giornalieri ---
+
+    def test_log_rotation_does_not_reopen_file_on_every_record(self):
+        handler = tb.logger.handlers[0]
+        with patch.object(tb, "datetime", fake_datetime(datetime(2030, 1, 1, 10, 0))):
+            tb.logger.info("primo messaggio del nuovo giorno")
+            stream = handler.stream
+            tb.logger.info("secondo messaggio")
+            self.assertIs(handler.stream, stream)
+
+        self.assertTrue(os.path.isabs(handler.baseFilename))
+        self.assertTrue(os.path.exists(os.path.join("logs", "bot_2030-01-01.log")))
+
     # --- Avvio del bot ---
 
     def test_main_registers_handlers_and_daily_job(self):
