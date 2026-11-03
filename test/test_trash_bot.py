@@ -26,7 +26,8 @@ CALENDARIO = {
     "08-01-26": ["INGOMBRANTI"]
 }
 with open(os.path.join(TEST_DIR, "config.json"), "w") as f:
-    json.dump({"token": "123:TEST", "calendar_file": "calendario.json"}, f)
+    json.dump({"token": "123:TEST", "calendar_file": "calendario.json",
+               "notifications": {"enabled": True, "time": "20:00"}}, f)
 with open(os.path.join(TEST_DIR, "calendario.json"), "w") as f:
     json.dump(CALENDARIO, f)
 os.chdir(TEST_DIR)
@@ -93,6 +94,22 @@ BIBLIOTECA_HTML = """
 <p><b>Ultimo aggiornamento</b>: 18 febbraio 2026, 17:58</p>
 </body></html>
 """
+
+
+# Testi esatti dei messaggi, generati dal codice e confrontati carattere per carattere.
+# Per rigenerarli dopo una modifica voluta dei testi: UPDATE_SNAPSHOTS=1 python -m unittest discover test
+SNAPSHOT_FILE = os.path.join(PROJECT_DIR, "test", "snapshots", "messaggi.json")
+
+
+def describe_markup(markup):
+    """Rappresentazione confrontabile di una tastiera Telegram."""
+    if markup is None:
+        return None
+    if markup is tb.COMMANDS_KEYBOARD:
+        return "COMMANDS_KEYBOARD"
+    if hasattr(markup, "inline_keyboard"):
+        return [[[b.text, b.callback_data] for b in riga] for riga in markup.inline_keyboard]
+    return [[b.text for b in riga] for riga in markup.keyboard]
 
 
 def fake_datetime(fixed):
@@ -552,6 +569,128 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
             await tb.send_biblioteca_hours(update, self.context)
 
         self.assertIn("Non sono riuscito", update.message.reply_text.call_args.args[0])
+
+    # --- Avvio del bot ---
+
+    def test_main_registers_handlers_and_daily_job(self):
+        with patch.object(tb.Application, "run_polling", autospec=True) as run_polling:
+            tb.main()
+
+        app = run_polling.call_args.args[0]
+        comandi = sorted(c for h in app.handlers[0] if hasattr(h, "commands") for c in h.commands)
+        self.assertEqual(comandi, ["biblioteca", "ecocentro", "medico", "start", "trash"])
+        self.assertEqual(len(app.handlers[0]), 7)
+        job = app.job_queue.get_jobs_by_name("daily_trash_notification")
+        self.assertEqual(len(job), 1)
+        trigger = job[0].job.trigger
+        self.assertIn("hour='20'", str(trigger))
+        self.assertIn("minute='0'", str(trigger))
+        self.assertEqual(str(trigger.timezone), "Europe/Rome")
+
+    # --- Testi esatti di tutti i messaggi ---
+
+    async def record_scenario(self, scenario, giorno, chat_id=42):
+        """Esegue uno scenario e registra, in ordine, tutti i messaggi inviati o modificati dal bot."""
+        chiamate = []
+
+        def recorder(tipo):
+            async def registra(*args, **kwargs):
+                chiamate.append({
+                    "tipo": tipo,
+                    "testo": args[0] if args else kwargs.get("text"),
+                    "parse_mode": kwargs.get("parse_mode"),
+                    "markup": describe_markup(kwargs.get("reply_markup"))
+                })
+                return SimpleNamespace(message_id=100)
+            return registra
+
+        message = SimpleNamespace(reply_text=AsyncMock(side_effect=recorder("reply_text")), delete=AsyncMock())
+        update = SimpleNamespace(effective_chat=SimpleNamespace(id=chat_id), message=message, effective_message=message)
+        query = SimpleNamespace(
+            data=None,
+            answer=AsyncMock(),
+            edit_message_text=AsyncMock(side_effect=recorder("edit_message_text")),
+            message=SimpleNamespace(chat=SimpleNamespace(id=chat_id), reply_text=AsyncMock(side_effect=recorder("reply_text")))
+        )
+        callback_update = SimpleNamespace(callback_query=query)
+        self.context.bot.send_message = AsyncMock(side_effect=recorder("send_message"))
+
+        with patch.object(tb, "datetime", fake_datetime(giorno)):
+            await scenario(update, callback_update)
+        return chiamate
+
+    async def collect_all_scenarios(self):
+        lun, mar, mer, sab = datetime(2026, 1, 5, 18), datetime(2026, 1, 6, 10), datetime(2026, 1, 7, 10), datetime(2026, 1, 10, 10)
+        estate_lun, estate_sab = datetime(2026, 6, 1, 10), datetime(2026, 6, 6, 10)
+        ctx = self.context
+        htet = patch("urllib.request.urlopen", fake_urlopen(HTET_HTML))
+        biblioteca = patch("urllib.request.urlopen", fake_urlopen(BIBLIOTECA_HTML))
+        rete_assente = patch("urllib.request.urlopen", side_effect=OSError("rete assente"))
+
+        def reset(subscribers=(), medici=None):
+            tb.subscribers = list(subscribers)
+            tb.medici_utenti = dict(medici or {})
+            ctx.chat_data.clear()
+
+        async def scelta(dato, cu):
+            cu.callback_query.data = dato
+            await tb.handle_medico_choice(cu, ctx)
+
+        scenari = []
+
+        def add(nome, funzione, giorno, setup=None, rete=None):
+            scenari.append((nome, funzione, giorno, setup or {}, rete))
+
+        add("start", lambda u, cu: tb.start(u, ctx), lun)
+        add("trash_nuovo_iscritto", lambda u, cu: tb.send_trash_exposure(u, ctx), lun)
+        add("trash_iscritto", lambda u, cu: tb.send_trash_exposure(u, ctx), lun, {"subscribers": [42]})
+        add("trash_niente_domani", lambda u, cu: tb.send_trash_exposure(u, ctx), sab, {"subscribers": [42]})
+        add("trash_rifiuto_sconosciuto", lambda u, cu: tb.send_trash_exposure(u, ctx), mer, {"subscribers": [42]})
+        add("notifica_serale", lambda u, cu: tb.send_daily_notification(ctx), mar, {"subscribers": [1, 2]})
+        add("ecocentro_inverno_lunedi", lambda u, cu: tb.send_ecocentro_openings(u, ctx), lun)
+        add("ecocentro_inverno_chiuso", lambda u, cu: tb.send_ecocentro_openings(u, ctx), mar)
+        add("ecocentro_inverno_sabato", lambda u, cu: tb.send_ecocentro_openings(u, ctx), sab)
+        add("ecocentro_estate_lunedi", lambda u, cu: tb.send_ecocentro_openings(u, ctx), estate_lun)
+        add("ecocentro_estate_sabato", lambda u, cu: tb.send_ecocentro_openings(u, ctx), estate_sab)
+        add("medico_domanda", lambda u, cu: tb.send_medico_hours(u, ctx), lun)
+        add("medico_scelta_marzo", lambda u, cu: scelta("medico:marzo", cu), lun)
+        add("medico_scelta_htet", lambda u, cu: scelta("medico:htet", cu), mar, rete=htet)
+        add("medico_cambia", lambda u, cu: scelta("medico:cambia", cu), lun, {"medici": {"42": "marzo"}})
+        add("medico_marzo_martedi", lambda u, cu: tb.send_medico_hours(u, ctx), mar, {"medici": {"42": "marzo"}})
+        add("medico_marzo_sabato", lambda u, cu: tb.send_medico_hours(u, ctx), sab, {"medici": {"42": "marzo"}})
+        add("medico_htet_mercoledi", lambda u, cu: tb.send_medico_hours(u, ctx), mer, {"medici": {"42": "htet"}}, htet)
+        add("medico_htet_errore", lambda u, cu: tb.send_medico_hours(u, ctx), mar, {"medici": {"42": "htet"}}, rete_assente)
+        add("biblioteca_aperta", lambda u, cu: tb.send_biblioteca_hours(u, ctx), mer, rete=biblioteca)
+        add("biblioteca_chiusa", lambda u, cu: tb.send_biblioteca_hours(u, ctx), mar, rete=biblioteca)
+        add("biblioteca_errore", lambda u, cu: tb.send_biblioteca_hours(u, ctx), mar, rete=rete_assente)
+        add("messaggio_libero_nuovo", lambda u, cu: tb.handle_message(u, ctx), lun)
+        add("messaggio_libero_iscritto", lambda u, cu: tb.handle_message(u, ctx), lun, {"subscribers": [42]})
+
+        risultati = {}
+        for nome, funzione, giorno, setup, rete in scenari:
+            reset(**setup)
+            if rete:
+                with rete:
+                    risultati[nome] = await self.record_scenario(funzione, giorno)
+            else:
+                risultati[nome] = await self.record_scenario(funzione, giorno)
+        return risultati
+
+    async def test_exact_message_texts(self):
+        risultati = await self.collect_all_scenarios()
+
+        if os.environ.get("UPDATE_SNAPSHOTS"):
+            os.makedirs(os.path.dirname(SNAPSHOT_FILE), exist_ok=True)
+            with open(SNAPSHOT_FILE, "w", encoding="utf-8") as f:
+                json.dump(risultati, f, ensure_ascii=False, indent=2)
+            self.skipTest("snapshot rigenerati")
+
+        with open(SNAPSHOT_FILE, encoding="utf-8") as f:
+            attesi = json.load(f)
+        self.assertEqual(sorted(risultati), sorted(attesi))
+        for nome in attesi:
+            with self.subTest(scenario=nome):
+                self.assertEqual(risultati[nome], attesi[nome])
 
 
 if __name__ == "__main__":

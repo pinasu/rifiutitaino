@@ -1,0 +1,279 @@
+{
+  "start": [
+    {
+      "tipo": "reply_text",
+      "testo": "👋 *Benvenuto!* Usa i bottoni qui sotto per i comandi:\n• /trash - cosa esporre domani\n• /ecocentro - orari di oggi dell'ecocentro\n• /medico - orari di oggi del medico di base\n• /biblioteca - orari della biblioteca\n\n🔔 _Riceverai anche la notifica delle 20:00._",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "trash_nuovo_iscritto": [
+    {
+      "tipo": "reply_text",
+      "testo": "🔔 *Ti ho aggiunto alla lista delle notifiche delle 20:00!*",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    },
+    {
+      "tipo": "send_message",
+      "testo": "📋 *Promemoria Raccolta Differenziata*\n\n🚚 *Domani ricordati di esporre:*\n• 🍏 *Umido*\n• 📦 *Carta*\n• 🥤 *Plastica*\n\n⚠️ _Ricordati di esporre i sacchi/mastelli correttamente._",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "trash_iscritto": [
+    {
+      "tipo": "send_message",
+      "testo": "📋 *Promemoria Raccolta Differenziata*\n\n🚚 *Domani ricordati di esporre:*\n• 🍏 *Umido*\n• 📦 *Carta*\n• 🥤 *Plastica*\n\n⚠️ _Ricordati di esporre i sacchi/mastelli correttamente._",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "trash_niente_domani": [
+    {
+      "tipo": "send_message",
+      "testo": "✨ *Domani non c'è niente da esporre!* Goditi la serata. 🎉",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "trash_rifiuto_sconosciuto": [
+    {
+      "tipo": "send_message",
+      "testo": "📋 *Promemoria Raccolta Differenziata*\n\n🚚 *Domani ricordati di esporre:*\n• 🔹 *INGOMBRANTI*\n\n⚠️ _Ricordati di esporre i sacchi/mastelli correttamente._",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "notifica_serale": [
+    {
+      "tipo": "send_message",
+      "testo": "📋 *Promemoria Raccolta Differenziata*\n\n🚚 *Domani ricordati di esporre:*\n• 🍏 *Umido*\n• 🍾 *Vetro e Lattine*\n\n⚠️ _Ricordati di esporre i sacchi/mastelli correttamente._",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    },
+    {
+      "tipo": "send_message",
+      "testo": "📋 *Promemoria Raccolta Differenziata*\n\n🚚 *Domani ricordati di esporre:*\n• 🍏 *Umido*\n• 🍾 *Vetro e Lattine*\n\n⚠️ _Ricordati di esporre i sacchi/mastelli correttamente._",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "ecocentro_inverno_lunedi": [
+    {
+      "tipo": "reply_text",
+      "testo": "♻️ **Ecocentro di Taino** ♻️\n\nOggi è **Lunedì** (Periodo INVERNALE)\nL'ecocentro è **APERTO** con il seguente orario:\n🕒 15:00 - 17:00",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "ecocentro_inverno_chiuso": [
+    {
+      "tipo": "reply_text",
+      "testo": "♻️ **Ecocentro di Taino** ♻️\n\nOggi è **Martedì** (Periodo INVERNALE)\nSpiacente, oggi l'ecocentro è **CHIUSO**. 🛑",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "ecocentro_inverno_sabato": [
+    {
+      "tipo": "reply_text",
+      "testo": "♻️ **Ecocentro di Taino** ♻️\n\nOggi è **Sabato** (Periodo INVERNALE)\nL'ecocentro è **APERTO** con il seguente orario:\n🕒 9:00 - 12:00 e 14:00 - 17:00",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "ecocentro_estate_lunedi": [
+    {
+      "tipo": "reply_text",
+      "testo": "♻️ **Ecocentro di Taino** ♻️\n\nOggi è **Lunedì** (Periodo ESTIVO)\nL'ecocentro è **APERTO** con il seguente orario:\n🕒 14:00 - 18:00",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "ecocentro_estate_sabato": [
+    {
+      "tipo": "reply_text",
+      "testo": "♻️ **Ecocentro di Taino** ♻️\n\nOggi è **Sabato** (Periodo ESTIVO)\nL'ecocentro è **APERTO** con il seguente orario:\n🕒 9:00 - 12:00 e 14:00 - 17:00",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "medico_domanda": [
+    {
+      "tipo": "reply_text",
+      "testo": "🩺 *Chi è il tuo medico di base?*\n\nScegli qui sotto: lo ricorderò per le prossime volte.",
+      "parse_mode": "Markdown",
+      "markup": [
+        [
+          [
+            "Htet Htet Ne Win",
+            "medico:htet"
+          ]
+        ],
+        [
+          [
+            "Valentina Marzo",
+            "medico:marzo"
+          ]
+        ]
+      ]
+    }
+  ],
+  "medico_scelta_marzo": [
+    {
+      "tipo": "edit_message_text",
+      "testo": "✅ Medico impostato: *Valentina Marzo*",
+      "parse_mode": "Markdown",
+      "markup": null
+    },
+    {
+      "tipo": "send_message",
+      "testo": "🩺 *Valentina Marzo* 🩺\n\nOggi è *Lunedì*\n\n🏥 Studio di *Taino*\n📍 Via Europa, 11\n📞 09:00 - 11:00 Segreteria\n🕒 16:00 - 19:00 Medico (su appuntamento)\n\nℹ️ _E-mail: dr.v.marzo@gmail.com_\nℹ️ _Tel. Segreteria: 351 83 69 125 dalle 9.00 alle 10.00_\nℹ️ _Tel. Medico: 351 33 69 124 previo primo contatto con la segreteria_\n",
+      "parse_mode": "Markdown",
+      "markup": [
+        [
+          [
+            "🔄 Cambia medico",
+            "medico:cambia"
+          ]
+        ]
+      ]
+    }
+  ],
+  "medico_scelta_htet": [
+    {
+      "tipo": "edit_message_text",
+      "testo": "✅ Medico impostato: *Htet Htet Ne Win*",
+      "parse_mode": "Markdown",
+      "markup": null
+    },
+    {
+      "tipo": "send_message",
+      "testo": "🩺 *Htet Htet Ne Win* 🩺\n\nOggi è *Martedì*\n\n🏥 Studio di *Taino*\n📍 c/o Centro Bielli - Via Europa, 15\n🕒 09:00 - 11:00 Ambulatorio\n💊 11:30 - 12:00 Ritiro Ricette\n\nℹ️ _Richiesta ricette farmaci ripetivi: e-mail: dott.newin@gmail.com o Chiamate o Whatsapp: 327 2704456_\nℹ️ _Richiesta appuntamenti: Chiamate o Whatsapp: 327 2704456 dal lunedì al venerdì dalle 8.00 alle 9.00_\n",
+      "parse_mode": "Markdown",
+      "markup": [
+        [
+          [
+            "🔄 Cambia medico",
+            "medico:cambia"
+          ]
+        ]
+      ]
+    }
+  ],
+  "medico_cambia": [
+    {
+      "tipo": "reply_text",
+      "testo": "🩺 *Chi è il tuo medico di base?*",
+      "parse_mode": "Markdown",
+      "markup": [
+        [
+          [
+            "Htet Htet Ne Win",
+            "medico:htet"
+          ]
+        ],
+        [
+          [
+            "Valentina Marzo",
+            "medico:marzo"
+          ]
+        ]
+      ]
+    }
+  ],
+  "medico_marzo_martedi": [
+    {
+      "tipo": "send_message",
+      "testo": "🩺 *Valentina Marzo* 🩺\n\nOggi è *Martedì*\n\n🏥 Studio di *Angera*\n📍 Piazza Parrocchiale, 8\n📞 09:00 - 11:00 Segreteria\n🕒 16:00 - 19:00 Medico (su appuntamento)\n\nℹ️ _E-mail: dr.v.marzo@gmail.com_\nℹ️ _Tel. Segreteria: 351 83 69 125 dalle 9.00 alle 10.00_\nℹ️ _Tel. Medico: 351 33 69 124 previo primo contatto con la segreteria_\n",
+      "parse_mode": "Markdown",
+      "markup": [
+        [
+          [
+            "🔄 Cambia medico",
+            "medico:cambia"
+          ]
+        ]
+      ]
+    }
+  ],
+  "medico_marzo_sabato": [
+    {
+      "tipo": "send_message",
+      "testo": "🩺 *Valentina Marzo* 🩺\n\nOggi è *Sabato*\n\nSpiacente, oggi il medico non riceve. 🛑\n\nℹ️ _E-mail: dr.v.marzo@gmail.com_\nℹ️ _Tel. Segreteria: 351 83 69 125 dalle 9.00 alle 10.00_\nℹ️ _Tel. Medico: 351 33 69 124 previo primo contatto con la segreteria_\n",
+      "parse_mode": "Markdown",
+      "markup": [
+        [
+          [
+            "🔄 Cambia medico",
+            "medico:cambia"
+          ]
+        ]
+      ]
+    }
+  ],
+  "medico_htet_mercoledi": [
+    {
+      "tipo": "send_message",
+      "testo": "🩺 *Htet Htet Ne Win* 🩺\n\nOggi è *Mercoledì*\n\n🏥 Studio di *Angera*\n📍 Piazza Parrocchiale, 8\n🕒 15:00 - 18:00 Ambulatorio\n💊 18:30 - 19:00 Ritiro Ricette\n\nℹ️ _Richiesta ricette farmaci ripetivi: e-mail: dott.newin@gmail.com o Chiamate o Whatsapp: 327 2704456_\nℹ️ _Richiesta appuntamenti: Chiamate o Whatsapp: 327 2704456 dal lunedì al venerdì dalle 8.00 alle 9.00_\n",
+      "parse_mode": "Markdown",
+      "markup": [
+        [
+          [
+            "🔄 Cambia medico",
+            "medico:cambia"
+          ]
+        ]
+      ]
+    }
+  ],
+  "medico_htet_errore": [
+    {
+      "tipo": "send_message",
+      "testo": "⚠️ Non sono riuscito a recuperare gli orari del medico. Riprova più tardi.",
+      "parse_mode": null,
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "biblioteca_aperta": [
+    {
+      "tipo": "reply_text",
+      "testo": "📚 *Biblioteca di Taino* 📚\n\nOggi è *Mercoledì*\nLa biblioteca è *APERTA*:\n🕒 15:00 - 18:00\n\n🗓️ *Orari della settimana:*\n• Lunedì: 10:00 - 12:00\n• Martedì: chiuso\n• Mercoledì: 15:00 - 18:00\n• Giovedì: 15:00 - 18:00\n• Venerdì: 10:00 - 12:00\n• Sabato: 10:00 - 12:00\n• Domenica: chiuso\n\n📍 Municipio, Piazza Pajetta, 21020 Taino VA, Italia\n📞 0331.956405 (int. 8)\n✉️ biblioteca@comune.taino.va.it\n\n_Orari aggiornati al 18 febbraio 2026, 17:58_",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "biblioteca_chiusa": [
+    {
+      "tipo": "reply_text",
+      "testo": "📚 *Biblioteca di Taino* 📚\n\nOggi è *Martedì*\nSpiacente, oggi la biblioteca è *CHIUSA*. 🛑\n\n🗓️ *Orari della settimana:*\n• Lunedì: 10:00 - 12:00\n• Martedì: chiuso\n• Mercoledì: 15:00 - 18:00\n• Giovedì: 15:00 - 18:00\n• Venerdì: 10:00 - 12:00\n• Sabato: 10:00 - 12:00\n• Domenica: chiuso\n\n📍 Municipio, Piazza Pajetta, 21020 Taino VA, Italia\n📞 0331.956405 (int. 8)\n✉️ biblioteca@comune.taino.va.it\n\n_Orari aggiornati al 18 febbraio 2026, 17:58_",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "biblioteca_errore": [
+    {
+      "tipo": "reply_text",
+      "testo": "⚠️ Non sono riuscito a recuperare gli orari della biblioteca. Riprova più tardi.",
+      "parse_mode": null,
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "messaggio_libero_nuovo": [
+    {
+      "tipo": "send_message",
+      "testo": "🔔 *Ti ho aggiunto alla lista delle notifiche delle 20:00!*\n\n👇 Usa i bottoni qui sotto per i comandi.",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ],
+  "messaggio_libero_iscritto": [
+    {
+      "tipo": "send_message",
+      "testo": "👇 Puoi usare il bot solo con i bottoni qui sotto.",
+      "parse_mode": "Markdown",
+      "markup": "COMMANDS_KEYBOARD"
+    }
+  ]
+}
