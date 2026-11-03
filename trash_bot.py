@@ -97,6 +97,15 @@ def format_trash_message(trash_list):
     message += "\n⚠️ _Ricordati di esporre i sacchi/mastelli correttamente._"
     return message
 
+def save_json(path, data):
+    """Scrive il file in modo atomico: se il Raspberry si spegne a metà, il file vecchio resta intatto."""
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, 'w') as f:
+        json.dump(data, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
+
 def load_subscribers():
     if os.path.exists('subscribers.json'):
         with open('subscribers.json', 'r') as f:
@@ -104,8 +113,7 @@ def load_subscribers():
     return []
 
 def save_subscribers():
-    with open('subscribers.json', 'w') as f:
-        json.dump(subscribers, f, indent=2)
+    save_json('subscribers.json', subscribers)
 
 def add_chat_id(chat_id):
     global subscribers
@@ -125,8 +133,7 @@ def save_medico_utente(chat_id, medico_id):
     global medici_utenti
     # Le chiavi JSON sono sempre stringhe
     medici_utenti[str(chat_id)] = medico_id
-    with open(MEDICI_UTENTI_FILE, 'w') as f:
-        json.dump(medici_utenti, f, indent=2)
+    save_json(MEDICI_UTENTI_FILE, medici_utenti)
 
 def setup_logging():
     if not os.path.exists('logs'):

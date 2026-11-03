@@ -210,6 +210,21 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(tb.add_chat_id(42))
         self.assertEqual(tb.subscribers, [42])
 
+    def test_save_json_keeps_old_file_if_write_fails(self):
+        tb.save_json("subscribers.json", [1, 2])
+        with patch("json.dump", side_effect=OSError("spegnimento improvviso")):
+            with self.assertRaises(OSError):
+                tb.save_json("subscribers.json", [1, 2, 3])
+
+        with open("subscribers.json") as f:
+            self.assertEqual(json.load(f), [1, 2])
+
+    def test_save_json_same_format_as_before(self):
+        tb.save_json("subscribers.json", [42])
+        with open("subscribers.json") as f:
+            self.assertEqual(f.read(), json.dumps([42], indent=2))
+        self.assertFalse(os.path.exists("subscribers.json.tmp"))
+
     def test_load_subscribers_without_file(self):
         self.assertEqual(tb.load_subscribers(), [])
 
