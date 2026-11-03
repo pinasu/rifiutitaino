@@ -268,6 +268,26 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         self.assertIn(messages.TRASH_ICONS["CARTA"], self.sent_texts()[0])
         self.assertIs(self.context.bot.send_message.call_args.kwargs["reply_markup"], messages.COMMANDS_KEYBOARD)
 
+    async def test_commands_work_on_edited_messages(self):
+        # Per un messaggio modificato Telegram manda edited_message: update.message è None
+        storage.medici_utenti = {"42": "marzo"}
+        comandi = (handlers.start, handlers.send_trash_exposure, handlers.send_ecocentro_openings,
+                   handlers.send_medico_hours)
+        for comando in comandi:
+            with self.subTest(comando=comando.__name__):
+                update = self.make_update()
+                update.message = None
+                with patch.object(utils, "datetime", fake_datetime(datetime(2026, 1, 5, 10, 0))):
+                    await comando(update, self.context)
+                risposte = update.effective_message.reply_text.call_count + self.context.bot.send_message.call_count
+                self.assertGreater(risposte, 0)
+
+        update = self.make_update()
+        update.message = None
+        with patch("urllib.request.urlopen", fake_urlopen(BIBLIOTECA_HTML)):
+            await handlers.send_biblioteca_hours(update, self.context)
+        update.effective_message.reply_text.assert_awaited_once()
+
     async def test_trash_command_existing_subscriber(self):
         storage.subscribers = [42]
         update = self.make_update()

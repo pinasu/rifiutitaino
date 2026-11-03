@@ -21,7 +21,7 @@ from .web import get_cached
 async def send_trash_exposure(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if storage.add_chat_id(chat_id):
-        await update.message.reply_text(MSG_ISCRIZIONE, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
+        await update.effective_message.reply_text(MSG_ISCRIZIONE, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
         logger.info(f"Aggiunto nuovo sottoscrittore da /trash: {chat_id}")
 
     logger.info(f"Ricevuto comando /trash da chat_id: {chat_id}")
@@ -38,7 +38,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if storage.add_chat_id(chat_id):
         logger.info(f"Aggiunto nuovo sottoscrittore da /start: {chat_id}")
 
-    await update.message.reply_text(MSG_START, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
+    await update.effective_message.reply_text(MSG_START, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -126,7 +126,7 @@ async def send_with_retry(bot, chat_id, text):
 
 async def send_ecocentro_openings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     messaggio = format_ecocentro_message(adesso())
-    await update.message.reply_text(messaggio, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
+    await update.effective_message.reply_text(messaggio, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
 
 
 async def send_medico_hours(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -135,7 +135,7 @@ async def send_medico_hours(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     medico_id = storage.medici_utenti.get(str(chat_id))
     if medico_id not in MEDICI:
-        await update.message.reply_text(MSG_DOMANDA_MEDICO, parse_mode="Markdown", reply_markup=medico_choice_keyboard())
+        await update.effective_message.reply_text(MSG_DOMANDA_MEDICO, parse_mode="Markdown", reply_markup=medico_choice_keyboard())
         return
 
     await send_medico_message(chat_id, medico_id, context)
@@ -186,11 +186,11 @@ async def send_biblioteca_hours(update: Update, context: ContextTypes.DEFAULT_TY
         info = await get_cached("biblioteca", sources.fetch_biblioteca_info)
     except Exception as e:
         logger.error(f"Errore nel recupero degli orari della biblioteca: {e}")
-        await update.message.reply_text(MSG_ERRORE_BIBLIOTECA, reply_markup=COMMANDS_KEYBOARD)
+        await update.effective_message.reply_text(MSG_ERRORE_BIBLIOTECA, reply_markup=COMMANDS_KEYBOARD)
         return
 
     messaggio = format_biblioteca_message(info, GIORNI_IT[adesso().weekday()])
-    await update.message.reply_text(messaggio, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
+    await update.effective_message.reply_text(messaggio, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
     logger.info(f"Orari biblioteca inviati a {chat_id}")
 
 
