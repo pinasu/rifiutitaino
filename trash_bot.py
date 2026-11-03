@@ -591,7 +591,8 @@ def main():
     
     logger.info("Avvio del bot...")
     
-    application = Application.builder().token(config['token']).build()
+    # concurrent_updates: un utente che aspetta la pagina del Comune non blocca gli altri
+    application = Application.builder().token(config['token']).concurrent_updates(True).build()
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('trash', send_trash_exposure))
     application.add_handler(CommandHandler("ecocentro", send_ecocentro_openings))

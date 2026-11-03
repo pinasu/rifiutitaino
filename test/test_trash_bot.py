@@ -580,6 +580,7 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         comandi = sorted(c for h in app.handlers[0] if hasattr(h, "commands") for c in h.commands)
         self.assertEqual(comandi, ["biblioteca", "ecocentro", "medico", "start", "trash"])
         self.assertEqual(len(app.handlers[0]), 7)
+        self.assertGreater(app.update_processor.max_concurrent_updates, 1)
         job = app.job_queue.get_jobs_by_name("daily_trash_notification")
         self.assertEqual(len(job), 1)
         trigger = job[0].job.trigger
