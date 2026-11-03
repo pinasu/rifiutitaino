@@ -7,6 +7,7 @@ import logging
 import urllib.request
 import pytz
 from datetime import datetime, timedelta, time
+from time import monotonic
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.helpers import escape_markdown
@@ -52,6 +53,11 @@ MEDICI_UTENTI_FILE = 'medici_utenti.json'
 
 # --- Pagina del Comune di Taino con gli orari della biblioteca ---
 BIBLIOTECA_URL = "https://www.comune.taino.va.it/it/unita_organizzative/biblioteca"
+
+# --- Cache delle pagine del Comune: gli orari cambiano raramente ---
+PAGE_CACHE_TTL = 6 * 60 * 60  # secondi
+_page_cache = {}        # nome -> (istante del download, risultato)
+_page_cache_locks = {}  # nome -> asyncio.Lock, per non scaricare due volte la stessa pagina in parallelo
 
 # --- Tastiera con i comandi al posto della tastiera classica ---
 # Il testo di ogni bottone viene inviato in chat come se l'avesse scritto l'utente,
@@ -343,6 +349,26 @@ def fetch_page(url):
     with urllib.request.urlopen(request, timeout=15) as response:
         return response.read().decode("utf-8")
 
+async def get_cached(nome, fetch_fn):
+    """Esegue fetch_fn in un thread e ne tiene il risultato in cache per PAGE_CACHE_TTL secondi.
+
+    Se il download fallisce ma esiste una copia in cache, anche scaduta, restituisce quella.
+    """
+    lock = _page_cache_locks.setdefault(nome, asyncio.Lock())
+    async with lock:
+        salvato = _page_cache.get(nome)
+        if salvato and monotonic() - salvato[0] < PAGE_CACHE_TTL:
+            return salvato[1]
+        try:
+            risultato = await asyncio.to_thread(fetch_fn)
+        except Exception as e:
+            if salvato:
+                logger.warning(f"Pagina '{nome}' non disponibile, uso la copia in cache: {e}")
+                return salvato[1]
+            raise
+        _page_cache[nome] = (monotonic(), risultato)
+        return risultato
+
 def html_to_text(fragment):
     """Toglie i tag HTML, decodifica le entità e normalizza gli spazi."""
     testo = html.unescape(re.sub(r'<[^>]+>', '', fragment)).replace('\xa0', ' ')
@@ -448,7 +474,7 @@ async def send_medico_message(chat_id, medico_id, context: ContextTypes.DEFAULT_
         studi, contatti = MARZO_STUDI, MARZO_CONTATTI
     else:
         try:
-            studi, contatti = await asyncio.to_thread(fetch_medico_info)
+            studi, contatti = await get_cached("medico_htet", fetch_medico_info)
         except Exception as e:
             logger.error(f"Errore nel recupero degli orari del medico: {e}")
             await context.bot.send_message(
@@ -545,7 +571,7 @@ async def send_biblioteca_hours(update: Update, context: ContextTypes.DEFAULT_TY
     logger.info(f"Ricevuto comando /biblioteca da chat_id: {chat_id}")
 
     try:
-        info = await asyncio.to_thread(fetch_biblioteca_info)
+        info = await get_cached("biblioteca", fetch_biblioteca_info)
     except Exception as e:
         logger.error(f"Errore nel recupero degli orari della biblioteca: {e}")
         await update.message.reply_text(

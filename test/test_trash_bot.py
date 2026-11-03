@@ -7,6 +7,7 @@ I test non usano la rete né Telegram: le chiamate al bot e la pagina del Comune
 Per provare anche il parsing sulla pagina reale del Comune:
     RUN_LIVE_TESTS=1 python -m unittest discover test -v
 """
+import asyncio
 import json
 import os
 import sys
@@ -134,6 +135,8 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         tb.subscribers = []
         tb.medici_utenti = {}
+        tb._page_cache.clear()
+        tb._page_cache_locks.clear()
         for nome in ("subscribers.json", tb.MEDICI_UTENTI_FILE):
             if os.path.exists(nome):
                 os.remove(nome)
@@ -570,6 +573,50 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("Non sono riuscito", update.message.reply_text.call_args.args[0])
 
+    # --- Cache delle pagine del Comune ---
+
+    async def test_cache_avoids_second_download(self):
+        urlopen = fake_urlopen(BIBLIOTECA_HTML)
+        with patch("urllib.request.urlopen", urlopen):
+            primo = await tb.get_cached("biblioteca", tb.fetch_biblioteca_info)
+            secondo = await tb.get_cached("biblioteca", tb.fetch_biblioteca_info)
+
+        self.assertEqual(urlopen.call_count, 1)
+        self.assertEqual(primo, secondo)
+
+    async def test_cache_concurrent_requests_download_once(self):
+        urlopen = fake_urlopen(BIBLIOTECA_HTML)
+        with patch("urllib.request.urlopen", urlopen):
+            risultati = await asyncio.gather(*(tb.get_cached("biblioteca", tb.fetch_biblioteca_info) for _ in range(5)))
+
+        self.assertEqual(urlopen.call_count, 1)
+        self.assertEqual(len(risultati), 5)
+
+    async def test_cache_expires(self):
+        urlopen = fake_urlopen(BIBLIOTECA_HTML)
+        with patch("urllib.request.urlopen", urlopen):
+            await tb.get_cached("biblioteca", tb.fetch_biblioteca_info)
+            istante, valore = tb._page_cache["biblioteca"]
+            tb._page_cache["biblioteca"] = (istante - tb.PAGE_CACHE_TTL - 1, valore)
+            await tb.get_cached("biblioteca", tb.fetch_biblioteca_info)
+
+        self.assertEqual(urlopen.call_count, 2)
+
+    async def test_cache_serves_stale_copy_when_site_is_down(self):
+        with patch("urllib.request.urlopen", fake_urlopen(BIBLIOTECA_HTML)):
+            valido = await tb.get_cached("biblioteca", tb.fetch_biblioteca_info)
+        istante, valore = tb._page_cache["biblioteca"]
+        tb._page_cache["biblioteca"] = (istante - tb.PAGE_CACHE_TTL - 1, valore)
+
+        with patch("urllib.request.urlopen", side_effect=OSError("rete assente")):
+            self.assertEqual(await tb.get_cached("biblioteca", tb.fetch_biblioteca_info), valido)
+
+    async def test_cache_without_copy_propagates_error(self):
+        with patch("urllib.request.urlopen", side_effect=OSError("rete assente")):
+            with self.assertRaises(OSError):
+                await tb.get_cached("biblioteca", tb.fetch_biblioteca_info)
+        self.assertNotIn("biblioteca", tb._page_cache)
+
     # --- Avvio del bot ---
 
     def test_main_registers_handlers_and_daily_job(self):
@@ -631,6 +678,7 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         def reset(subscribers=(), medici=None):
             tb.subscribers = list(subscribers)
             tb.medici_utenti = dict(medici or {})
+            tb._page_cache.clear()
             ctx.chat_data.clear()
 
         async def scelta(dato, cu):
