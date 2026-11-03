@@ -97,6 +97,10 @@ def format_trash_message(trash_list):
     message += "\n⚠️ _Ricordati di esporre i sacchi/mastelli correttamente._"
     return message
 
+def data_path(*parts):
+    """Percorso di un file dati: nella cartella BOT_DATA_DIR se impostata, altrimenti in quella corrente."""
+    return os.path.join(os.environ.get('BOT_DATA_DIR', '.'), *parts)
+
 # --- Stato del bot: riempito da main(), vuoto finché il bot non parte ---
 logger = logging.getLogger('trash_bot')
 subscribers = []      # chat iscritte alla notifica serale
@@ -113,13 +117,13 @@ def save_json(path, data):
     os.replace(tmp_path, path)
 
 def load_subscribers():
-    if os.path.exists('subscribers.json'):
-        with open('subscribers.json', 'r') as f:
+    if os.path.exists(data_path('subscribers.json')):
+        with open(data_path('subscribers.json'), 'r') as f:
             return json.load(f)
     return []
 
 def save_subscribers():
-    save_json('subscribers.json', subscribers)
+    save_json(data_path('subscribers.json'), subscribers)
 
 def add_chat_id(chat_id):
     global subscribers
@@ -130,8 +134,8 @@ def add_chat_id(chat_id):
     return False
 
 def load_medici_utenti():
-    if os.path.exists(MEDICI_UTENTI_FILE):
-        with open(MEDICI_UTENTI_FILE, 'r') as f:
+    if os.path.exists(data_path(MEDICI_UTENTI_FILE)):
+        with open(data_path(MEDICI_UTENTI_FILE), 'r') as f:
             return json.load(f)
     return {}
 
@@ -139,13 +143,14 @@ def save_medico_utente(chat_id, medico_id):
     global medici_utenti
     # Le chiavi JSON sono sempre stringhe
     medici_utenti[str(chat_id)] = medico_id
-    save_json(MEDICI_UTENTI_FILE, medici_utenti)
+    save_json(data_path(MEDICI_UTENTI_FILE), medici_utenti)
 
 def setup_logging():
     if logger.handlers:
         return logger
-    if not os.path.exists('logs'):
-        os.makedirs('logs')
+    log_dir = data_path('logs')
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
 
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -159,7 +164,8 @@ def setup_logging():
 
         def _get_current_filename(self):
             """Genera il nome del file basato sulla data corrente."""
-            return self.filename_template.format(date=datetime.now().strftime('%Y-%m-%d'))
+            # replace e non format: il percorso di BOT_DATA_DIR potrebbe contenere parentesi graffe
+            return self.filename_template.replace('{date}', datetime.now().strftime('%Y-%m-%d'))
 
         def _cleanup_old_logs(self):
             now = datetime.now()
@@ -190,7 +196,7 @@ def setup_logging():
             super().emit(record)
 
     log_handler = DailyLogHandler(
-        filename_template='logs/bot_{date}.log',
+        filename_template=os.path.join(log_dir, 'bot_{date}.log'),
         max_days=7,
         encoding='utf-8'
     )
@@ -199,13 +205,19 @@ def setup_logging():
     return logger
 
 def load_config():
-    """Legge config.json e il calendario indicato al suo interno."""
+    """Legge config.json e il calendario indicato al suo interno.
+
+    Il token può arrivare anche dalla variabile d'ambiente TELEGRAM_TOKEN, che ha la precedenza.
+    """
     try:
-        with open('config.json', 'r') as f:
+        with open(data_path('config.json'), 'r') as f:
             config = json.load(f)
         logger.info("Configurazione caricata con successo.")
+        if os.environ.get('TELEGRAM_TOKEN'):
+            config['token'] = os.environ['TELEGRAM_TOKEN']
+            logger.info("Token letto dalla variabile d'ambiente TELEGRAM_TOKEN.")
 
-        with open(config['calendar_file'], 'r') as f:
+        with open(data_path(config['calendar_file']), 'r') as f:
             calendar = json.load(f)
         logger.info(f"Calendario caricato da {config['calendar_file']}.")
 

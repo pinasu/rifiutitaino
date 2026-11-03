@@ -673,6 +673,40 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
 
     # --- Avvio del bot ---
 
+    def test_token_from_environment_overrides_config(self):
+        with patch.dict(os.environ, {"TELEGRAM_TOKEN": "999:ENV"}), \
+             patch.object(tb.Application, "run_polling", autospec=True) as run_polling:
+            tb.main()
+
+        self.assertEqual(run_polling.call_args.args[0].bot.token, "999:ENV")
+
+    def test_token_from_config_without_environment(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TELEGRAM_TOKEN", None)
+            with patch.object(tb.Application, "run_polling", autospec=True) as run_polling:
+                tb.main()
+
+        self.assertEqual(run_polling.call_args.args[0].bot.token, "123:TEST")
+
+    def test_data_dir_from_environment(self):
+        cartella = tempfile.mkdtemp(prefix="trash_bot_data_")
+        with open(os.path.join(cartella, "config.json"), "w") as f:
+            json.dump({"token": "123:DIR", "calendar_file": "cal.json"}, f)
+        with open(os.path.join(cartella, "cal.json"), "w") as f:
+            json.dump({"01-01-30": ["CARTA"]}, f)
+
+        with patch.dict(os.environ, {"BOT_DATA_DIR": cartella}):
+            config, calendario = tb.load_config()
+            tb.add_chat_id(7)
+            tb.save_medico_utente(7, "marzo")
+
+        self.assertEqual(config["token"], "123:DIR")
+        self.assertEqual(calendario, {"01-01-30": ["CARTA"]})
+        with open(os.path.join(cartella, "subscribers.json")) as f:
+            self.assertEqual(json.load(f), [7])
+        self.assertTrue(os.path.exists(os.path.join(cartella, tb.MEDICI_UTENTI_FILE)))
+        self.assertFalse(os.path.exists("subscribers.json"))
+
     def test_import_has_no_side_effects(self):
         self.assertEqual(tb.subscribers, [])
         self.assertIsInstance(tb.medici_utenti, dict)
