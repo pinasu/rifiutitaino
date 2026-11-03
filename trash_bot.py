@@ -50,11 +50,17 @@ MEDICI = {
 }
 MEDICI_UTENTI_FILE = 'medici_utenti.json'
 
+# --- Pagina del Comune di Taino con gli orari della biblioteca ---
+BIBLIOTECA_URL = "https://www.comune.taino.va.it/it/unita_organizzative/biblioteca"
+
 # --- Tastiera con i comandi al posto della tastiera classica ---
 # Il testo di ogni bottone viene inviato in chat come se l'avesse scritto l'utente,
 # quindi i comandi vengono gestiti dai rispettivi CommandHandler.
 COMMANDS_KEYBOARD = ReplyKeyboardMarkup(
-    [[KeyboardButton("/trash"), KeyboardButton("/ecocentro"), KeyboardButton("/medico")]],
+    [
+        [KeyboardButton("/trash"), KeyboardButton("/ecocentro")],
+        [KeyboardButton("/medico"), KeyboardButton("/biblioteca")]
+    ],
     resize_keyboard=True,
     is_persistent=True
 )
@@ -221,7 +227,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👋 *Benvenuto!* Usa i bottoni qui sotto per i comandi:\n"
         "• /trash - cosa esporre domani\n"
         "• /ecocentro - orari di oggi dell'ecocentro\n"
-        "• /medico - orari di oggi del medico di base\n\n"
+        "• /medico - orari di oggi del medico di base\n"
+        "• /biblioteca - orari della biblioteca\n\n"
         "🔔 _Riceverai anche la notifica delle 20:00._",
         parse_mode="Markdown",
         reply_markup=COMMANDS_KEYBOARD
@@ -307,11 +314,20 @@ async def send_ecocentro_openings(update: Update, context: ContextTypes.DEFAULT_
 
     await update.message.reply_text(messaggio, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
 
+def fetch_page(url):
+    """Scarica una pagina web e ne restituisce l'HTML."""
+    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(request, timeout=15) as response:
+        return response.read().decode("utf-8")
+
+def html_to_text(fragment):
+    """Toglie i tag HTML, decodifica le entità e normalizza gli spazi."""
+    testo = html.unescape(re.sub(r'<[^>]+>', '', fragment)).replace('\xa0', ' ')
+    return re.sub(r'\s+', ' ', testo).strip()
+
 def fetch_medico_info():
     """Scarica la news del Comune e restituisce gli studi (con orari per giorno) e i contatti."""
-    request = urllib.request.Request(MEDICO_URL, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(request, timeout=15) as response:
-        page = response.read().decode("utf-8")
+    page = fetch_page(MEDICO_URL)
 
     # Il testo della news è nel primo <div> senza attributi dopo la sezione "descrizione"
     descrizione = re.search(r'id="descrizione".*?<div\s*>(.*?)</div>', page, re.S)
@@ -456,6 +472,93 @@ async def send_medico_message(chat_id, medico_id, context: ContextTypes.DEFAULT_
     )
     logger.info(f"Orari medico ({medico_id}) inviati a {chat_id}: {studi_aperti} studi aperti oggi")
 
+def giorno_da_testo(parola):
+    """Riconosce il giorno dalle prime tre lettere, così regge errori di battitura come "Lunerdì"."""
+    for giorno in GIORNI_IT:
+        if parola[:3].lower() == giorno[:3].lower():
+            return giorno
+    return None
+
+def fetch_biblioteca_info():
+    """Scarica la pagina della biblioteca e restituisce sede, contatti, orari per giorno e data di aggiornamento."""
+    page = fetch_page(BIBLIOTECA_URL)
+
+    # Gli orari sono nell'elenco della sezione "Ulteriori informazioni", es. "Mercoledì dalle 15:00 alle 18:00"
+    sezione_orari = re.search(r'id="ulteriori-informazioni".*?<div\s*>(.*?)</div>', page, re.S)
+    if not sezione_orari:
+        raise ValueError("Sezione orari non trovata nella pagina della biblioteca")
+
+    orari = {}
+    for voce in re.findall(r'<li[^>]*>(.*?)</li>', sezione_orari.group(1), re.S):
+        testo = html_to_text(voce)
+        giorno = giorno_da_testo(testo.split(' ', 1)[0])
+        tempi = [f"{int(h):02d}:{m}" for h, m in re.findall(r'(\d{1,2})[.:](\d{2})', testo)]
+        if not giorno or len(tempi) < 2:
+            continue
+        # Gli orari vanno a coppie (apertura, chiusura): regge anche "dalle 9 alle 12 e dalle 15 alle 18"
+        fasce = [f"{tempi[i]} - {tempi[i + 1]}" for i in range(0, len(tempi) - 1, 2)]
+        orari.setdefault(giorno, []).extend(fasce)
+
+    if not orari:
+        raise ValueError("Nessun orario trovato nella pagina della biblioteca")
+
+    sede = re.search(r'id="sede-principale".*?card-title[^>]*>(.*?)</h1>.*?card-text[^>]*>(.*?)</div>', page, re.S)
+    contatti = re.search(r'id="contatti"(.*?)id="ulteriori-informazioni"', page, re.S)
+    contatti = contatti.group(1) if contatti else ""
+    email = re.search(r'href="mailto:([^"]+)"', contatti)
+    telefono = re.search(r'href="tel:[^"]*"[^>]*>([^<]+)<', contatti)
+    aggiornamento = re.search(r'Ultimo aggiornamento</b>:\s*([^<]+)', page)
+
+    return {
+        "sede": f"{html_to_text(sede.group(1))}, {html_to_text(sede.group(2))}" if sede else None,
+        "email": email.group(1).strip() if email else None,
+        "telefono": html_to_text(telefono.group(1)) if telefono else None,
+        "orari": orari,
+        "aggiornamento": html_to_text(aggiornamento.group(1)) if aggiornamento else None
+    }
+
+async def send_biblioteca_hours(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.effective_chat.id
+    logger.info(f"Ricevuto comando /biblioteca da chat_id: {chat_id}")
+
+    try:
+        info = await asyncio.to_thread(fetch_biblioteca_info)
+    except Exception as e:
+        logger.error(f"Errore nel recupero degli orari della biblioteca: {e}")
+        await update.message.reply_text(
+            "⚠️ Non sono riuscito a recuperare gli orari della biblioteca. Riprova più tardi.",
+            reply_markup=COMMANDS_KEYBOARD
+        )
+        return
+
+    nome_giorno = GIORNI_IT[datetime.now(ZoneInfo("Europe/Rome")).weekday()]
+    fasce_oggi = info["orari"].get(nome_giorno)
+
+    messaggio = f"📚 *Biblioteca di Taino* 📚\n\nOggi è *{nome_giorno}*\n"
+    if fasce_oggi:
+        messaggio += "La biblioteca è *APERTA*:\n"
+        messaggio += "".join(f"🕒 {fascia}\n" for fascia in fasce_oggi)
+    else:
+        messaggio += "Spiacente, oggi la biblioteca è *CHIUSA*. 🛑\n"
+
+    messaggio += "\n🗓️ *Orari della settimana:*\n"
+    for giorno in GIORNI_IT:
+        fasce = info["orari"].get(giorno)
+        messaggio += f"• {giorno}: {', '.join(fasce) if fasce else 'chiuso'}\n"
+
+    messaggio += "\n"
+    if info["sede"]:
+        messaggio += f"📍 {escape_markdown(info['sede'])}\n"
+    if info["telefono"]:
+        messaggio += f"📞 {escape_markdown(info['telefono'])}\n"
+    if info["email"]:
+        messaggio += f"✉️ {escape_markdown(info['email'])}\n"
+    if info["aggiornamento"]:
+        messaggio += f"\n_Orari aggiornati al {escape_markdown(info['aggiornamento'])}_"
+
+    await update.message.reply_text(messaggio, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
+    logger.info(f"Orari biblioteca inviati a {chat_id}")
+
 def main():
     global subscribers, medici_utenti
     subscribers = load_subscribers()
@@ -470,6 +573,7 @@ def main():
     application.add_handler(CommandHandler('trash', send_trash_exposure))
     application.add_handler(CommandHandler("ecocentro", send_ecocentro_openings))
     application.add_handler(CommandHandler("medico", send_medico_hours))
+    application.add_handler(CommandHandler("biblioteca", send_biblioteca_hours))
     application.add_handler(CallbackQueryHandler(handle_medico_choice, pattern=r'^medico:'))
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
 

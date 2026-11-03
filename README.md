@@ -1,6 +1,6 @@
 # ♻️ Rifiuti Taino
 
-Un bot Telegram per i cittadini di **Taino (VA)**. Ti ricorda quali rifiuti esporre la sera prima della raccolta e ti dice se oggi l'ecocentro è aperto e dove riceve il medico di base.
+Un bot Telegram per i cittadini di **Taino (VA)**. Ti ricorda quali rifiuti esporre la sera prima della raccolta e ti dice se oggi l'ecocentro e la biblioteca sono aperti e dove riceve il medico di base.
 
 > ℹ️ Il progetto è nato per iniziativa personale e **non è un servizio ufficiale** del Comune di Taino. Per qualsiasi dubbio fanno fede i canali ufficiali del Comune.
 
@@ -15,13 +15,14 @@ Un bot Telegram per i cittadini di **Taino (VA)**. Ti ricorda quali rifiuti espo
 | **/trash** | Quali rifiuti esporre domani (umido, carta, plastica, vetro e lattine, secco) |
 | **/ecocentro** | Se l'ecocentro di Taino è aperto oggi e con quale orario |
 | **/medico** | In quale studio (Taino o Angera) riceve oggi il **tuo** medico di base, con gli orari e i contatti per prendere appuntamento |
+| **/biblioteca** | Se la biblioteca di Taino è aperta oggi, gli orari di tutta la settimana, l'indirizzo e i contatti |
 
 In più, **ogni sera alle 20:00** il bot ti manda un promemoria con i rifiuti da esporre per il giorno dopo. Se il giorno dopo non c'è raccolta, non ricevi nessun messaggio.
 
 ### Come si usa
 
 1. Apri il bot su Telegram e premi **Avvia** (oppure scrivi `/start`).
-2. Al posto della tastiera compaiono i bottoni **/trash**, **/ecocentro** e **/medico**. Premi quello che ti serve.
+2. Al posto della tastiera compaiono i bottoni **/trash**, **/ecocentro**, **/medico** e **/biblioteca**. Premi quello che ti serve.
 3. Da questo momento ricevi anche il promemoria serale delle 20:00.
 
 La prima volta che premi **/medico** il bot ti chiede chi è il tuo medico di base (Htet Htet Ne Win o Valentina Marzo) e se lo ricorda per le volte successive. Per cambiarlo, premi **🔄 Cambia medico** sotto la risposta.
@@ -65,6 +66,7 @@ Segreteria: 351 83 69 125 dalle 9:00 alle 10:00. Medico: 351 33 69 124, solo dop
 - **Medico**:
   - *Htet Htet Ne Win*: orari letti in tempo reale, ogni volta che premi il bottone, dalla [news del Comune di Taino](https://www.comune.taino.va.it/it/news/132139/nuovo-medico-di-medicina-generale).
   - *Valentina Marzo*: orari presi dal volantino dell'ambulatorio (`data/marzo.pdf`).
+- **Biblioteca**: orari letti in tempo reale, ogni volta che premi il bottone, dalla [pagina della biblioteca](https://www.comune.taino.va.it/it/unita_organizzative/biblioteca) sul sito del Comune. In fondo alla risposta il bot indica la data dell'ultimo aggiornamento della pagina.
 
 ---
 
@@ -132,9 +134,9 @@ python -m unittest discover test -v
 
 I test non si collegano a Telegram né alla rete: le risposte del bot e la pagina del Comune sono simulate, e la data di "oggi" è fissata in ogni test. Lavorano in una cartella temporanea, con un `config.json` e un calendario di prova, quindi non toccano `config.json`, `subscribers.json` o `medici_utenti.json` veri.
 
-Coprono la tastiera dei comandi, il messaggio dei rifiuti, le iscrizioni, la notifica serale, gli orari dell'ecocentro (estivi e invernali), il parsing della pagina del Comune e tutto il flusso di scelta del medico.
+Coprono la tastiera dei comandi, il messaggio dei rifiuti, le iscrizioni, la notifica serale, gli orari dell'ecocentro (estivi e invernali), il parsing delle pagine del Comune (medico e biblioteca), tutto il flusso di scelta del medico e la risposta di `/biblioteca`.
 
-Per controllare anche che il parsing funzioni sulla **pagina reale** del Comune (utile se si sospetta che sia cambiata):
+Per controllare anche che il parsing funzioni sulle **pagine reali** del Comune (utile se si sospetta che siano cambiate):
 
 ```bash
 RUN_LIVE_TESTS=1 python -m unittest discover test -v      # su Windows PowerShell: $env:RUN_LIVE_TESTS=1; python -m unittest discover test -v
@@ -181,12 +183,15 @@ rifiutitaino/
 - **Medico**: i medici disponibili sono elencati nel dizionario `MEDICI`. La prima volta che una chat usa `/medico`, il bot mostra dei bottoni inline per scegliere. La scelta arriva a `handle_medico_choice` (un `CallbackQueryHandler` con `callback_data` `medico:<id>`) e viene salvata in `medici_utenti.json`, con l'id della chat come chiave.
   - *Htet*: `fetch_medico_info` scarica la pagina del Comune e ne legge il testo riga per riga. Una riga in maiuscolo come `TAINO …` apre un nuovo studio, una riga come `Martedì - 9.00/11.00 Ambulatorio …` aggiunge gli orari di quel giorno. Usa solo la libreria standard (`urllib`, `re`, `html`).
   - *Marzo*: gli orari sono scritti a mano in `MARZO_STUDI` e `MARZO_CONTATTI`, copiati da `data/marzo.pdf`. Se esce un volantino nuovo, vanno aggiornati lì.
+- **Biblioteca**: `fetch_biblioteca_info` scarica la pagina della biblioteca e legge l'elenco degli orari nella sezione "Ulteriori informazioni" (righe come `Mercoledì dalle 15:00 alle 18:00`), più sede, email, telefono e data di ultimo aggiornamento. Il giorno viene riconosciuto dalle prime tre lettere (`giorno_da_testo`), così il bot regge refusi come il "Lunerdì" presente oggi sulla pagina. Gli orari vengono letti a coppie, quindi funziona anche con più fasce nello stesso giorno ("dalle 9 alle 12 e dalle 15 alle 18").
+- **Pagine web**: `fetch_page` scarica le pagine e `html_to_text` ne estrae il testo. Le usano sia `/medico` sia `/biblioteca`.
 - **Log**: i log finiscono in `logs/bot_AAAA-MM-GG.log`, un file al giorno, e i file più vecchi di 7 giorni vengono cancellati.
 
 ### Limiti noti
 
 - Gli orari della dr. Marzo non si aggiornano da soli: vanno ricopiati nel codice a ogni nuovo volantino.
 - La pagina della dott.ssa Htet è scritta a mano sul sito del Comune. Se cambia il formato del testo, o se gli orari nuovi escono in un'altra news, `/medico` va adattato (`MEDICO_URL` e `fetch_medico_info`).
+- Anche `/biblioteca` dipende dalla struttura della pagina del Comune. Se gli orari spariscono dall'elenco della sezione "Ulteriori informazioni", il bot risponde che non riesce a recuperarli e `fetch_biblioteca_info` va adattato.
 - Il calendario della raccolta va aggiornato a mano ogni anno.
 - Un utente non può disiscriversi dal promemoria: per ora bisogna togliere la sua chat da `subscribers.json`.
 

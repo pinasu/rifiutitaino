@@ -55,6 +55,46 @@ HTET_HTML = """
 """
 
 
+# Estratto della pagina della biblioteca (con il refuso "Lunerdì" presente sulla pagina reale)
+BIBLIOTECA_HTML = """
+<html><body>
+<a id="sede-principale" class="anchor-content" href="#">Municipium</a>
+<h2>Sede principale </h2>
+<div class="card-body">
+    <h1 class="card-title h5">
+        <a class="text-decoration-none" href="https://www.comune.taino.va.it/it/point-of-interest/735368">
+            Municipio
+        </a>
+    </h1>
+    <div class="card-text">
+        <p>Piazza Pajetta, 21020 Taino VA, Italia</p>
+    </div>
+</div>
+<a id="contatti" class="anchor-content" href="#">Municipium</a>
+<h2>Contatti  <span class="sr-only">Utili</span> </h2>
+<div class="offset-md-1 col-md-11 page-pnrr-content" data-element="organizationalunit">
+    <strong>Email</strong> : <a href="mailto:biblioteca@comune.taino.va.it">biblioteca@comune.taino.va.it</a>
+</div>
+<div class="offset-md-1 col-md-11 page-pnrr-content" data-element="organizationalunit">
+    <strong>Telefono</strong> : <a href="tel:0331.956405 (int. 8)">0331.956405 (int. 8)</a>
+</div>
+<a id="ulteriori-informazioni" class="anchor-content" href="#">Municipium</a>
+<h2>Ulteriori Informazioni </h2>
+<div class="row"><div class="offset-md-1 col-md-11">
+<div ><p>Orario ufficio:</p>
+<ul>
+<li>Lunerd&igrave; dalle 10:00 alle 12:00</li>
+<li>Mercoled&igrave; dalle 15:00 alle 18:00</li>
+<li>Gioved&igrave; dalle 15:00 alle 18:00</li>
+<li>Venerd&igrave; dalle 10:00 alle 12:00</li>
+<li>Sabato dalle 10:00 alle 12:00</li>
+</ul></div>
+</div></div>
+<p><b>Ultimo aggiornamento</b>: 18 febbraio 2026, 17:58</p>
+</body></html>
+"""
+
+
 def fake_datetime(fixed):
     """Sostituto di datetime con now() fisso (ma con lo stesso comportamento per il resto)."""
     class FakeDatetime(datetime):
@@ -103,7 +143,7 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
 
     def test_commands_keyboard_has_all_commands(self):
         testi = [b.text for riga in tb.COMMANDS_KEYBOARD.keyboard for b in riga]
-        self.assertEqual(testi, ["/trash", "/ecocentro", "/medico"])
+        self.assertEqual(testi, ["/trash", "/ecocentro", "/medico", "/biblioteca"])
         self.assertTrue(tb.COMMANDS_KEYBOARD.is_persistent)
         self.assertTrue(tb.COMMANDS_KEYBOARD.resize_keyboard)
 
@@ -157,6 +197,7 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         kwargs = update.message.reply_text.call_args.kwargs
         self.assertIs(kwargs["reply_markup"], tb.COMMANDS_KEYBOARD)
         self.assertIn("/medico", update.message.reply_text.call_args.args[0])
+        self.assertIn("/biblioteca", update.message.reply_text.call_args.args[0])
 
     async def test_trash_command_new_subscriber(self):
         update = self.make_update()
@@ -400,6 +441,86 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tb.medici_utenti, {})
         update.callback_query.edit_message_text.assert_not_called()
         self.context.bot.send_message.assert_not_called()
+
+    # --- Biblioteca ---
+
+    def test_giorno_da_testo_handles_typos(self):
+        self.assertEqual(tb.giorno_da_testo("Lunerdì"), "Lunedì")
+        self.assertEqual(tb.giorno_da_testo("martedi"), "Martedì")
+        self.assertEqual(tb.giorno_da_testo("Mercoledì"), "Mercoledì")
+        self.assertIsNone(tb.giorno_da_testo("Orario"))
+
+    def test_fetch_biblioteca_info_parses_page(self):
+        with patch("urllib.request.urlopen", fake_urlopen(BIBLIOTECA_HTML)):
+            info = tb.fetch_biblioteca_info()
+
+        self.assertEqual(info["orari"], {
+            "Lunedì": ["10:00 - 12:00"],
+            "Mercoledì": ["15:00 - 18:00"],
+            "Giovedì": ["15:00 - 18:00"],
+            "Venerdì": ["10:00 - 12:00"],
+            "Sabato": ["10:00 - 12:00"]
+        })
+        self.assertEqual(info["sede"], "Municipio, Piazza Pajetta, 21020 Taino VA, Italia")
+        self.assertEqual(info["email"], "biblioteca@comune.taino.va.it")
+        self.assertEqual(info["telefono"], "0331.956405 (int. 8)")
+        self.assertEqual(info["aggiornamento"], "18 febbraio 2026, 17:58")
+
+    def test_fetch_biblioteca_info_multiple_slots_per_day(self):
+        pagina = BIBLIOTECA_HTML.replace(
+            "<li>Sabato dalle 10:00 alle 12:00</li>",
+            "<li>Sabato dalle 9.00 alle 12.00 e dalle 14:00 alle 17:00</li>"
+        )
+        with patch("urllib.request.urlopen", fake_urlopen(pagina)):
+            info = tb.fetch_biblioteca_info()
+
+        self.assertEqual(info["orari"]["Sabato"], ["09:00 - 12:00", "14:00 - 17:00"])
+
+    def test_fetch_biblioteca_info_page_without_hours(self):
+        with patch("urllib.request.urlopen", fake_urlopen("<html><body>Pagina cambiata</body></html>")):
+            with self.assertRaises(ValueError):
+                tb.fetch_biblioteca_info()
+
+    @unittest.skipUnless(os.environ.get("RUN_LIVE_TESTS"), "imposta RUN_LIVE_TESTS=1 per usare la pagina reale")
+    def test_fetch_biblioteca_info_live_page(self):
+        info = tb.fetch_biblioteca_info()
+        self.assertTrue(info["orari"])
+        self.assertIsNotNone(info["email"])
+
+    async def biblioteca_reply(self, giorno, pagina=BIBLIOTECA_HTML):
+        update = self.make_update()
+        with patch("urllib.request.urlopen", fake_urlopen(pagina)), \
+             patch.object(tb, "datetime", fake_datetime(giorno)):
+            await tb.send_biblioteca_hours(update, self.context)
+        self.assertIs(update.message.reply_text.call_args.kwargs["reply_markup"], tb.COMMANDS_KEYBOARD)
+        return update.message.reply_text.call_args.args[0]
+
+    async def test_biblioteca_open_today(self):
+        messaggio = await self.biblioteca_reply(datetime(2026, 1, 7, 10, 0))  # mercoledì
+        self.assertIn("Oggi è *Mercoledì*", messaggio)
+        self.assertIn("*APERTA*", messaggio)
+        self.assertIn("🕒 15:00 - 18:00", messaggio)
+
+    async def test_biblioteca_closed_today(self):
+        messaggio = await self.biblioteca_reply(datetime(2026, 1, 6, 10, 0))  # martedì
+        self.assertIn("*CHIUSA*", messaggio)
+
+    async def test_biblioteca_shows_week_and_contacts(self):
+        messaggio = await self.biblioteca_reply(datetime(2026, 1, 6, 10, 0))
+        self.assertIn("• Lunedì: 10:00 - 12:00", messaggio)
+        self.assertIn("• Martedì: chiuso", messaggio)
+        self.assertIn("• Domenica: chiuso", messaggio)
+        self.assertIn("Piazza Pajetta", messaggio)
+        self.assertIn("0331.956405 (int. 8)", messaggio)
+        self.assertIn("biblioteca@comune.taino.va.it", messaggio)
+        self.assertIn("18 febbraio 2026", messaggio)
+
+    async def test_biblioteca_page_error_sends_error_message(self):
+        update = self.make_update()
+        with patch("urllib.request.urlopen", side_effect=OSError("rete assente")):
+            await tb.send_biblioteca_hours(update, self.context)
+
+        self.assertIn("Non sono riuscito", update.message.reply_text.call_args.args[0])
 
 
 if __name__ == "__main__":
