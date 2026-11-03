@@ -7,14 +7,48 @@ import logging
 import urllib.request
 import pytz
 from datetime import datetime, timedelta, time
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.helpers import escape_markdown
 from zoneinfo import ZoneInfo
 
-# --- Pagina del Comune di Taino con gli orari del medico di base ---
+# --- Pagina del Comune di Taino con gli orari della dott.ssa Htet ---
 MEDICO_URL = "https://www.comune.taino.va.it/it/news/132139/nuovo-medico-di-medicina-generale"
 GIORNI_IT = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
+
+# --- Orari dr. Marzo (dal volantino data/marzo.pdf) ---
+# Al mattino è attiva la segreteria, al pomeriggio il medico riceve solo su appuntamento
+MARZO_STUDI = [
+    {
+        "nome": "Taino",
+        "indirizzo": "Via Europa, 11",
+        "orari": {
+            "Lunedì": [("09:00 - 11:00", "Segreteria"), ("16:00 - 19:00", "Medico (su appuntamento)")],
+            "Mercoledì": [("09:00 - 11:00", "Segreteria"), ("15:00 - 18:00", "Medico (su appuntamento)")],
+            "Venerdì": [("09:00 - 11:00", "Segreteria"), ("16:30 - 19:30", "Medico (su appuntamento)")]
+        }
+    },
+    {
+        "nome": "Angera",
+        "indirizzo": "Piazza Parrocchiale, 8",
+        "orari": {
+            "Martedì": [("09:00 - 11:00", "Segreteria"), ("16:00 - 19:00", "Medico (su appuntamento)")],
+            "Giovedì": [("09:00 - 11:00", "Segreteria"), ("15:00 - 18:00", "Medico (su appuntamento)")]
+        }
+    }
+]
+MARZO_CONTATTI = [
+    "E-mail: dr.v.marzo@gmail.com",
+    "Tel. Segreteria: 351 83 69 125 dalle 9.00 alle 10.00",
+    "Tel. Medico: 351 33 69 124 previo primo contatto con la segreteria"
+]
+
+# --- Medici di base disponibili: id -> nome visualizzato ---
+MEDICI = {
+    "htet": "Htet Htet Ne Win",
+    "marzo": "Valentina Marzo"
+}
+MEDICI_UTENTI_FILE = 'medici_utenti.json'
 
 # --- Tastiera con i comandi al posto della tastiera classica ---
 # Il testo di ogni bottone viene inviato in chat come se l'avesse scritto l'utente,
@@ -67,6 +101,19 @@ def add_chat_id(chat_id):
         save_subscribers()
         return True
     return False
+
+def load_medici_utenti():
+    if os.path.exists(MEDICI_UTENTI_FILE):
+        with open(MEDICI_UTENTI_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_medico_utente(chat_id, medico_id):
+    global medici_utenti
+    # Le chiavi JSON sono sempre stringhe
+    medici_utenti[str(chat_id)] = medico_id
+    with open(MEDICI_UTENTI_FILE, 'w') as f:
+        json.dump(medici_utenti, f, indent=2)
 
 def setup_logging():
     if not os.path.exists('logs'):
@@ -311,22 +358,69 @@ def fetch_medico_info():
 
     return studi, contatti
 
+def medico_choice_keyboard():
+    """Bottoni inline per scegliere il proprio medico di base."""
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(nome, callback_data=f"medico:{medico_id}")] for medico_id, nome in MEDICI.items()]
+    )
+
 async def send_medico_hours(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     logger.info(f"Ricevuto comando /medico da chat_id: {chat_id}")
 
-    try:
-        studi, contatti = await asyncio.to_thread(fetch_medico_info)
-    except Exception as e:
-        logger.error(f"Errore nel recupero degli orari del medico: {e}")
+    medico_id = medici_utenti.get(str(chat_id))
+    if medico_id not in MEDICI:
         await update.message.reply_text(
-            "⚠️ Non sono riuscito a recuperare gli orari del medico. Riprova più tardi.",
-            reply_markup=COMMANDS_KEYBOARD
+            "🩺 *Chi è il tuo medico di base?*\n\nScegli qui sotto: lo ricorderò per le prossime volte.",
+            parse_mode="Markdown",
+            reply_markup=medico_choice_keyboard()
         )
         return
 
+    await send_medico_message(chat_id, medico_id, context)
+
+async def handle_medico_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    chat_id = query.message.chat.id
+    scelta = query.data.split(':', 1)[1]
+
+    if scelta == "cambia":
+        await query.message.reply_text(
+            "🩺 *Chi è il tuo medico di base?*",
+            parse_mode="Markdown",
+            reply_markup=medico_choice_keyboard()
+        )
+        return
+
+    if scelta not in MEDICI:
+        return
+
+    save_medico_utente(chat_id, scelta)
+    logger.info(f"Chat {chat_id} ha impostato il medico: {scelta}")
+    await query.edit_message_text(
+        f"✅ Medico impostato: *{escape_markdown(MEDICI[scelta])}*",
+        parse_mode="Markdown"
+    )
+    await send_medico_message(chat_id, scelta, context)
+
+async def send_medico_message(chat_id, medico_id, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if medico_id == "marzo":
+        studi, contatti = MARZO_STUDI, MARZO_CONTATTI
+    else:
+        try:
+            studi, contatti = await asyncio.to_thread(fetch_medico_info)
+        except Exception as e:
+            logger.error(f"Errore nel recupero degli orari del medico: {e}")
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="⚠️ Non sono riuscito a recuperare gli orari del medico. Riprova più tardi.",
+                reply_markup=COMMANDS_KEYBOARD
+            )
+            return
+
     nome_giorno = GIORNI_IT[datetime.now(ZoneInfo("Europe/Rome")).weekday()]
-    messaggio = f"🩺 *Medico di base* 🩺\n\nOggi è *{nome_giorno}*\n\n"
+    messaggio = f"🩺 *{escape_markdown(MEDICI[medico_id])}* 🩺\n\nOggi è *{nome_giorno}*\n\n"
 
     studi_aperti = 0
     for studio in studi:
@@ -339,7 +433,12 @@ async def send_medico_hours(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         if studio["indirizzo"]:
             messaggio += f"📍 {escape_markdown(studio['indirizzo'])}\n"
         for orario, tipo in fasce_oggi:
-            icona = "💊" if "ricett" in tipo.lower() else "🕒"
+            if "ricett" in tipo.lower():
+                icona = "💊"
+            elif "segreteria" in tipo.lower():
+                icona = "📞"
+            else:
+                icona = "🕒"
             messaggio += f"{icona} {orario} {escape_markdown(tipo)}\n"
         messaggio += "\n"
 
@@ -349,13 +448,19 @@ async def send_medico_hours(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     for contatto in contatti:
         messaggio += f"ℹ️ _{escape_markdown(contatto)}_\n"
 
-    await update.message.reply_text(messaggio, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
-    logger.info(f"Orari medico inviati a {chat_id}: {studi_aperti} studi aperti oggi")
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=messaggio,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Cambia medico", callback_data="medico:cambia")]])
+    )
+    logger.info(f"Orari medico ({medico_id}) inviati a {chat_id}: {studi_aperti} studi aperti oggi")
 
 def main():
-    global subscribers
+    global subscribers, medici_utenti
     subscribers = load_subscribers()
-    
+    medici_utenti = load_medici_utenti()
+
     os.environ['TZ'] = 'Europe/Rome'
     
     logger.info("Avvio del bot...")
@@ -365,6 +470,7 @@ def main():
     application.add_handler(CommandHandler('trash', send_trash_exposure))
     application.add_handler(CommandHandler("ecocentro", send_ecocentro_openings))
     application.add_handler(CommandHandler("medico", send_medico_hours))
+    application.add_handler(CallbackQueryHandler(handle_medico_choice, pattern=r'^medico:'))
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
 
     notifications_config = config.get('notifications', {})
