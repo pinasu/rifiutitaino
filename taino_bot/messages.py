@@ -76,15 +76,15 @@ def format_ecocentro_message(oggi):
 
     if orario_oggi:
         return (
-            f"♻️ **Ecocentro di Taino** ♻️\n\n"
-            f"Oggi è **{nome_giorno}** (Periodo {periodo_str})\n"
-            f"L'ecocentro è **APERTO** con il seguente orario:\n"
+            f"♻️ *Ecocentro di Taino* ♻️\n\n"
+            f"Oggi è *{nome_giorno}* (Periodo {periodo_str})\n"
+            f"L'ecocentro è *APERTO* con il seguente orario:\n"
             f"🕒 {orario_oggi}"
         )
     return (
-        f"♻️ **Ecocentro di Taino** ♻️\n\n"
-        f"Oggi è **{nome_giorno}** (Periodo {periodo_str})\n"
-        f"Spiacente, oggi l'ecocentro è **CHIUSO**. 🛑"
+        f"♻️ *Ecocentro di Taino* ♻️\n\n"
+        f"Oggi è *{nome_giorno}* (Periodo {periodo_str})\n"
+        f"Spiacente, oggi l'ecocentro è *CHIUSO*. 🛑"
     )
 
 

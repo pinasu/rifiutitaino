@@ -62,7 +62,7 @@
   "ecocentro_inverno_lunedi": [
     {
       "tipo": "reply_text",
-      "testo": "♻️ **Ecocentro di Taino** ♻️\n\nOggi è **Lunedì** (Periodo INVERNALE)\nL'ecocentro è **APERTO** con il seguente orario:\n🕒 15:00 - 17:00",
+      "testo": "♻️ *Ecocentro di Taino* ♻️\n\nOggi è *Lunedì* (Periodo INVERNALE)\nL'ecocentro è *APERTO* con il seguente orario:\n🕒 15:00 - 17:00",
       "parse_mode": "Markdown",
       "markup": "COMMANDS_KEYBOARD"
     }
@@ -70,7 +70,7 @@
   "ecocentro_inverno_chiuso": [
     {
       "tipo": "reply_text",
-      "testo": "♻️ **Ecocentro di Taino** ♻️\n\nOggi è **Martedì** (Periodo INVERNALE)\nSpiacente, oggi l'ecocentro è **CHIUSO**. 🛑",
+      "testo": "♻️ *Ecocentro di Taino* ♻️\n\nOggi è *Martedì* (Periodo INVERNALE)\nSpiacente, oggi l'ecocentro è *CHIUSO*. 🛑",
       "parse_mode": "Markdown",
       "markup": "COMMANDS_KEYBOARD"
     }
@@ -78,7 +78,7 @@
   "ecocentro_inverno_sabato": [
     {
       "tipo": "reply_text",
-      "testo": "♻️ **Ecocentro di Taino** ♻️\n\nOggi è **Sabato** (Periodo INVERNALE)\nL'ecocentro è **APERTO** con il seguente orario:\n🕒 9:00 - 12:00 e 14:00 - 17:00",
+      "testo": "♻️ *Ecocentro di Taino* ♻️\n\nOggi è *Sabato* (Periodo INVERNALE)\nL'ecocentro è *APERTO* con il seguente orario:\n🕒 9:00 - 12:00 e 14:00 - 17:00",
       "parse_mode": "Markdown",
       "markup": "COMMANDS_KEYBOARD"
     }
@@ -86,7 +86,7 @@
   "ecocentro_estate_lunedi": [
     {
       "tipo": "reply_text",
-      "testo": "♻️ **Ecocentro di Taino** ♻️\n\nOggi è **Lunedì** (Periodo ESTIVO)\nL'ecocentro è **APERTO** con il seguente orario:\n🕒 14:00 - 18:00",
+      "testo": "♻️ *Ecocentro di Taino* ♻️\n\nOggi è *Lunedì* (Periodo ESTIVO)\nL'ecocentro è *APERTO* con il seguente orario:\n🕒 14:00 - 18:00",
       "parse_mode": "Markdown",
       "markup": "COMMANDS_KEYBOARD"
     }
@@ -94,7 +94,7 @@
   "ecocentro_estate_sabato": [
     {
       "tipo": "reply_text",
-      "testo": "♻️ **Ecocentro di Taino** ♻️\n\nOggi è **Sabato** (Periodo ESTIVO)\nL'ecocentro è **APERTO** con il seguente orario:\n🕒 9:00 - 12:00 e 14:00 - 17:00",
+      "testo": "♻️ *Ecocentro di Taino* ♻️\n\nOggi è *Sabato* (Periodo ESTIVO)\nL'ecocentro è *APERTO* con il seguente orario:\n🕒 9:00 - 12:00 e 14:00 - 17:00",
       "parse_mode": "Markdown",
       "markup": "COMMANDS_KEYBOARD"
     }
