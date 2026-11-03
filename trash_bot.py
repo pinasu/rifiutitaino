@@ -615,6 +615,10 @@ async def send_biblioteca_hours(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text(messaggio, parse_mode="Markdown", reply_markup=COMMANDS_KEYBOARD)
     logger.info(f"Orari biblioteca inviati a {chat_id}")
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Scrive nel log del bot le eccezioni non gestite dagli handler (altrimenti finirebbero solo su stderr)."""
+    logger.error("Errore durante la gestione di un update", exc_info=context.error)
+
 def main():
     global subscribers, medici_utenti
     subscribers = load_subscribers()
@@ -634,6 +638,7 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_medico_choice, pattern=r'^medico:'))
     # Registrato per ultimo: riceve solo ciò che nessun handler precedente ha gestito (compresi i comandi sconosciuti)
     application.add_handler(MessageHandler(filters.ALL, handle_message))
+    application.add_error_handler(error_handler)
 
     notifications_config = config.get('notifications', {})
     if notifications_config.get('enabled', False):

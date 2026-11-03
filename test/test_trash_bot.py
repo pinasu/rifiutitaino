@@ -632,6 +632,16 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
                 await tb.get_cached("biblioteca", tb.fetch_biblioteca_info)
         self.assertNotIn("biblioteca", tb._page_cache)
 
+    async def test_error_handler_logs_exception(self):
+        try:
+            raise RuntimeError("errore di prova")
+        except RuntimeError as e:
+            errore = e
+        with self.assertLogs("trash_bot", level="ERROR") as log:
+            await tb.error_handler(None, SimpleNamespace(error=errore))
+
+        self.assertIn("errore di prova", "\n".join(log.output))
+
     # --- Avvio del bot ---
 
     def test_main_registers_handlers_and_daily_job(self):
@@ -643,6 +653,7 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(comandi, ["biblioteca", "ecocentro", "medico", "start", "trash"])
         self.assertEqual(len(app.handlers[0]), 7)
         self.assertGreater(app.update_processor.max_concurrent_updates, 1)
+        self.assertIn(tb.error_handler, app.error_handlers)
         job = app.job_queue.get_jobs_by_name("daily_trash_notification")
         self.assertEqual(len(job), 1)
         trigger = job[0].job.trigger
