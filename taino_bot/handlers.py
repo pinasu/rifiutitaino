@@ -92,6 +92,7 @@ async def send_daily_notification(context: ContextTypes.DEFAULT_TYPE):
 
     if not trash_info:
         logger.info(f"Nessun rifiuto da esporre per il {next_day}: notifica giornaliera saltata.")
+        sources.warn_if_calendar_expired(next_day)
         logger.info("=== FINE INVIO NOTIFICHE GIORNALIERE ===")
         return
 

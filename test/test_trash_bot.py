@@ -211,6 +211,29 @@ class TestTrashBot(unittest.IsolatedAsyncioTestCase):
         with patch.object(utils, "datetime", UtcSystemDatetime):
             self.assertEqual(utils.chiave_domani(), "07-01-26")
 
+    def test_warns_when_calendar_has_no_dates_for_next_year(self):
+        with patch.object(utils, "datetime", fake_datetime(datetime(2026, 12, 31, 18, 0))), \
+             self.assertLogs("trash_bot", level="WARNING") as log:
+            self.assertEqual(sources.get_trash_exposure_date(), [])
+
+        self.assertTrue(any("non contiene date del 2027" in riga for riga in log.output))
+
+    async def test_daily_notification_warns_when_calendar_expired(self):
+        storage.subscribers = [1]
+        with patch.object(utils, "datetime", fake_datetime(datetime(2026, 12, 31, 20, 0))), \
+             self.assertLogs("trash_bot", level="WARNING") as log:
+            await handlers.send_daily_notification(self.context)
+
+        self.assertTrue(any("non contiene date del 2027" in riga for riga in log.output))
+        self.context.bot.send_message.assert_not_called()
+
+    def test_no_calendar_warning_on_normal_day_without_collection(self):
+        with patch.object(utils, "datetime", fake_datetime(datetime(2026, 1, 10, 18, 0))), \
+             self.assertLogs("trash_bot", level="WARNING") as log:
+            sources.get_trash_exposure_date()
+
+        self.assertFalse(any("non contiene date" in riga for riga in log.output))
+
     def test_get_trash_exposure_date_no_collection(self):
         with patch.object(utils, "datetime", fake_datetime(datetime(2026, 1, 10, 18, 0))):
             self.assertEqual(sources.get_trash_exposure_date(), [])

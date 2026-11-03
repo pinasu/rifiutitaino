@@ -18,7 +18,15 @@ def get_trash_exposure_date():
         logger.info(f"Trovata esposizione per domani: {calendar_data[next_day]}")
         return calendar_data[next_day]
     logger.warning(f"Nessuna esposizione trovata per domani ({next_day}).")
+    warn_if_calendar_expired(next_day)
     return []
+
+
+def warn_if_calendar_expired(chiave):
+    """Avvisa nel log se il calendario non contiene nessuna data dell'anno di `chiave` (GG-MM-AA)."""
+    anno = chiave[-2:]
+    if not any(data.endswith(f"-{anno}") for data in calendar_data):
+        logger.warning(f"⚠️ Il calendario non contiene date del 20{anno}: va aggiornato (calendar_file in config.json).")
 
 
 def fetch_medico_info():
